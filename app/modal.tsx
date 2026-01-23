@@ -4,12 +4,17 @@ import { StyleSheet } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
+// This is a template for modal screens (useful for pop-ups or quick details)
 export default function ModalScreen() {
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title">This is a modal</ThemedText>
+      <ThemedText type="title">Este es un modal</ThemedText>
+      
+      {/* Note: This link currently points to '/', which is your Login. 
+          In a real scenario, you would point this to a specific screen or just use a back button.
+      */}
       <Link href="/" dismissTo style={styles.link}>
-        <ThemedText type="link">Go to home screen</ThemedText>
+        <ThemedText type="link">Volver a la pantalla principal</ThemedText>
       </Link>
     </ThemedView>
   );
