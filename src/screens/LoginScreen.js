@@ -30,6 +30,29 @@ const LoginScreen = () => {
         checkSession();
     }, []);
 
+    /**
+     * Helper to fetch user data, photo, and permissions immediately after login success
+     */
+    const fetchAndStoreUserData = async (token: string) => {
+        try {
+            const response = await api.get('/user', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            // 🛡️ SAVE FULL USER DATA: This includes the permissions array from Laravel
+            if (response.data) {
+                await AsyncStorage.setItem('userData', JSON.stringify(response.data));
+            }
+
+            if (response.data.profile_photo_path) {
+                const photoUrl = `http://${PC_IP}:8000/storage/images/${response.data.profile_photo_path}`;
+                await AsyncStorage.setItem('userProfilePhoto', photoUrl);
+            }
+        } catch (error) {
+            console.log("Pre-fetch user data error:", error.message);
+        }
+    };
+
     const handleLogin = async () => {
         if (!email || !password) {
             Alert.alert('Error', 'Los campos no pueden estar vacíos');
@@ -45,14 +68,16 @@ const LoginScreen = () => {
             const response = await api.post('/login', { email, password });
 
             if (response.status === 200 || response.status === 204) {
-                // IMPORTANT: Save the token returned by your Laravel ApiController
                 const token = response.data.token; 
                 
                 await AsyncStorage.setItem('userEmail', email);
                 await AsyncStorage.setItem('isLoggedIn', 'true');
                 
                 if (token) {
-                    await AsyncStorage.setItem('userToken', token); // Key for protected routes
+                    await AsyncStorage.setItem('userToken', token);
+                    
+                    // FETCH DATA NOW: Get user details and permissions before navigating
+                    await fetchAndStoreUserData(token);
                 }
                 
                 router.replace('/(tabs)/home'); 

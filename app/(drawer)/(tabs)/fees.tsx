@@ -15,16 +15,20 @@ import usePermission from '@/hooks/usePermission';
 /**
  * 🛡️ TYPE DEFINITIONS
  */
-interface Street {
+interface Fee {
   id: number;
   name: string;
+  amount_occupied: string;
+  amount_empty: string;
+  amount_land: string;
+  description: string | null;
   deleted_at: string | null;
 }
 
-const ENDPOINT = 'http://192.168.1.16:8000/api/streets';
+const ENDPOINT = 'http://192.168.1.16:8000/api/fees';
 
-export default function StreetsScreen() {
-  const [streets, setStreets] = useState<Street[]>([]);
+export default function FeesScreen() {
+  const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
   const [user, setUser] = useState<any>(null);
@@ -34,13 +38,17 @@ export default function StreetsScreen() {
   const [modalVisible, setModalVisible] = useState<boolean>(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState<boolean>(false);
   
-  const [editingStreet, setEditingStreet] = useState<Street | null>(null);
-  const [streetToDelete, setStreetToDelete] = useState<Street | null>(null);
+  const [editingFee, setEditingFee] = useState<Fee | null>(null);
+  const [feeToDelete, setFeeToDelete] = useState<Fee | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // --- FORM STATES ---
-  const [streetName, setStreetName] = useState<string>('');
-  const [deactivationReason, setDeactivationReason] = useState<string>('');
+  const [feeName, setFeeName] = useState<string>('');
+  const [amountOccupied, setAmountOccupied] = useState<string>('');
+  const [amountEmpty, setAmountEmpty] = useState<string>('');
+  const [amountLand, setAmountLand] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [deactivationReason, setDeactivationReason] = useState<string>(''); 
 
   /**
    * 🛡️ INITIAL LOAD
@@ -50,7 +58,7 @@ export default function StreetsScreen() {
       try {
         const jsonValue = await AsyncStorage.getItem('userData');
         if (jsonValue) setUser(JSON.parse(jsonValue));
-        await fetchStreets();
+        await fetchFees();
       } catch (e) {
         console.error("Initialization Error:", e);
       } finally {
@@ -61,11 +69,11 @@ export default function StreetsScreen() {
   }, []);
 
   const { can } = usePermission(user);
-  const canCreate = can('Crear-calles');
-  const canEdit = can('Editar-calles');
-  const canDeactivate = can('Eliminar-calles');
+  const canCreate = can('Crear-cuotas');
+  const canEdit = can('Editar-cuotas');
+  const canDeactivate = can('Eliminar-cuotas');
 
-  const fetchStreets = async () => {
+  const fetchFees = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -73,7 +81,7 @@ export default function StreetsScreen() {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       const data = response.data.data || response.data;
-      setStreets(Array.isArray(data) ? data : []);
+      setFees(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Fetch Error:", error);
     } finally {
@@ -81,20 +89,24 @@ export default function StreetsScreen() {
     }
   };
 
-  const filteredStreets = streets.filter((s) => 
-    s.name.toLowerCase().includes(search.toLowerCase())
+  const filteredFees = fees.filter((f) => 
+    f.name.toLowerCase().includes(search.toLowerCase())
   );
 
   // --- HANDLERS ---
 
-  const openEditModal = (street: Street | null = null) => {
-    setEditingStreet(street);
-    setStreetName(street ? street.name : '');
+  const openEditModal = (fee: Fee | null = null) => {
+    setEditingFee(fee);
+    setFeeName(fee ? fee.name : '');
+    setAmountOccupied(fee ? fee.amount_occupied.toString() : '');
+    setAmountEmpty(fee ? fee.amount_empty.toString() : '');
+    setAmountLand(fee ? fee.amount_land.toString() : '');
+    setDescription(fee?.description || '');
     setModalVisible(true);
   };
 
-  const openDeleteModal = (street: Street) => {
-    setStreetToDelete(street);
+  const openDeleteModal = (fee: Fee) => {
+    setFeeToDelete(fee);
     setDeactivationReason('');
     setDeleteModalVisible(true);
   };
@@ -104,42 +116,54 @@ export default function StreetsScreen() {
       Alert.alert("Error", "Debes especificar un motivo de la baja.");
       return;
     }
-    setIsSaving(true);
+
+    setIsSaving(true); // Bloquea botones y activa relojito
     try {
       const token = await AsyncStorage.getItem('userToken');
-      await axios.delete(`${ENDPOINT}/${streetToDelete?.id}`, {
+      await axios.delete(`${ENDPOINT}/${feeToDelete?.id}`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { reason: deactivationReason }
       });
+
       setDeleteModalVisible(false);
-      Alert.alert("Éxito", "Calle dada de baja correctamente.");
-      fetchStreets();
+      Alert.alert("Éxito", "Tarifa dada de baja exitosamente.");
+      fetchFees();
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Error al procesar la baja.";
+      const msg = error.response?.data?.message || "Fallo al dar de baja la tarifa.";
       Alert.alert("Error", msg);
     } finally {
-      setIsSaving(false);
+      setIsSaving(false); // Libera botones
     }
   };
 
   const handleSave = async () => {
-    if (!streetName.trim()) return;
-    setIsSaving(true);
+    if (!feeName.trim() || !amountOccupied || !amountEmpty || !amountLand) {
+      Alert.alert("Error", "Faltan datos obligatorios.");
+      return;
+    }
+    setIsSaving(true); // Bloquea botones y activa relojito
     try {
       const token = await AsyncStorage.getItem('userToken');
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
-      
-      if (editingStreet) {
-        await axios.put(`${ENDPOINT}/${editingStreet.id}`, { name: streetName }, config);
+      const payload = {
+        name: feeName,
+        amount_occupied: amountOccupied,
+        amount_empty: amountEmpty,
+        amount_land: amountLand,
+        description: description
+      };
+
+      if (editingFee) {
+        await axios.put(`${ENDPOINT}/${editingFee.id}`, payload, config);
       } else {
-        await axios.post(ENDPOINT, { name: streetName }, config);
+        await axios.post(ENDPOINT, payload, config);
       }
       setModalVisible(false);
-      fetchStreets();
+      fetchFees();
     } catch (error) {
-      Alert.alert("Error", "Error al guardar la calle.");
+      Alert.alert("Error", "Error al guardar la cuota.");
     } finally {
-      setIsSaving(false);
+      setIsSaving(false); // Libera botones
     }
   };
 
@@ -150,7 +174,7 @@ export default function StreetsScreen() {
       <View style={styles.headerActions}>
         <TextInput 
           style={styles.searchInput}
-          placeholder="Buscar calle..."
+          placeholder="Buscar cuota..."
           placeholderTextColor="#888"
           value={search}
           onChangeText={setSearch}
@@ -166,12 +190,12 @@ export default function StreetsScreen() {
         <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
       ) : (
         <FlatList
-          data={filteredStreets}
+          data={filteredFees}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.streetItem}>
+            <View style={styles.itemRow}>
               <View style={{ flex: 1 }}>
-                <ThemedText style={styles.streetName}>{item.name}</ThemedText>
+                <ThemedText style={styles.itemName}>{item.name}</ThemedText>
                 <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
                   <ThemedText style={styles.badgeText}>{item.deleted_at ? 'Inactiva' : 'Activa'}</ThemedText>
                 </View>
@@ -183,6 +207,7 @@ export default function StreetsScreen() {
                     <IconSymbol name="pencil" size={22} color={item.deleted_at ? "#ccc" : "#007AFF"} />
                   </TouchableOpacity>
                 )}
+
                 {canDeactivate && (
                   <TouchableOpacity onPress={() => openDeleteModal(item)} disabled={!!item.deleted_at}>
                     <IconSymbol name="trash" size={22} color={item.deleted_at ? "#ccc" : "#ff4444"} />
@@ -203,14 +228,59 @@ export default function StreetsScreen() {
               style={{ width: '100%', alignItems: 'center' }}
             >
               <View style={styles.modalContent}>
-                <ThemedText type="subtitle">{editingStreet ? 'Editar' : 'Nueva'} Calle</ThemedText>
+                <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
+                    {editingFee ? 'Editar' : 'Nueva'} Cuota
+                </ThemedText>
+
                 <TextInput 
                   style={styles.modalInput}
-                  value={streetName}
-                  onChangeText={setStreetName}
-                  placeholder="Nombre de la calle"
+                  value={feeName}
+                  onChangeText={setFeeName}
+                  placeholder="Nombre"
                   placeholderTextColor="#aaa"
                 />
+
+                <View style={styles.row}>
+                    <View style={{flex: 1, marginRight: 5}}>
+                        <ThemedText style={styles.labelSmall}>Habitada $</ThemedText>
+                        <TextInput 
+                            style={styles.modalInputSmall}
+                            value={amountOccupied}
+                            onChangeText={setAmountOccupied}
+                            keyboardType="numeric"
+                            placeholder="0.00"
+                        />
+                    </View>
+                    <View style={{flex: 1, marginHorizontal: 5}}>
+                        <ThemedText style={styles.labelSmall}>Vacía $</ThemedText>
+                        <TextInput 
+                            style={styles.modalInputSmall}
+                            value={amountEmpty}
+                            onChangeText={setAmountEmpty}
+                            keyboardType="numeric"
+                            placeholder="0.00"
+                        />
+                    </View>
+                    <View style={{flex: 1, marginLeft: 5}}>
+                        <ThemedText style={styles.labelSmall}>Terreno $</ThemedText>
+                        <TextInput 
+                            style={styles.modalInputSmall}
+                            value={amountLand}
+                            onChangeText={setAmountLand}
+                            keyboardType="numeric"
+                            placeholder="0.00"
+                        />
+                    </View>
+                </View>
+
+                <TextInput 
+                  style={[styles.modalInput, { marginTop: 15 }]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Descripción"
+                  placeholderTextColor="#aaa"
+                />
+
                 <View style={styles.modalButtons}>
                   <TouchableOpacity onPress={() => setModalVisible(false)} disabled={isSaving}>
                     <ThemedText style={styles.cancelLabel}>Cancelar</ThemedText>
@@ -220,7 +290,11 @@ export default function StreetsScreen() {
                     onPress={handleSave}
                     disabled={isSaving}
                   >
-                    {isSaving ? <ActivityIndicator color="white" size="small" /> : <ThemedText style={styles.saveBtnText}>Guardar</ThemedText>}
+                    {isSaving ? (
+                      <ActivityIndicator color="white" size="small" />
+                    ) : (
+                      <ThemedText style={styles.saveBtnText}>Guardar</ThemedText>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -229,7 +303,7 @@ export default function StreetsScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: DEACTIVATION --- */}
+      {/* --- MODAL: DEACTIVATION (REASON) --- */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
@@ -241,17 +315,24 @@ export default function StreetsScreen() {
                 <View style={styles.deleteHeader}>
                   <ThemedText style={styles.deleteTitle}>Confirmar Baja</ThemedText>
                 </View>
-                <ThemedText style={styles.deleteText}>¿Deseas dar de baja la calle {streetToDelete?.name}?</ThemedText>
+                
+                <ThemedText style={styles.deleteText}>
+                  ¿Está seguro de dar de baja la cuota {feeToDelete?.name}?
+                </ThemedText>
+
                 <View style={{ marginTop: 15 }}>
                   <ThemedText style={styles.labelSmall}>Motivo de la Baja *</ThemedText>
                   <TextInput 
                     style={[styles.modalInput, { borderBottomColor: '#ff4444' }]}
                     value={deactivationReason}
                     onChangeText={setDeactivationReason}
-                    placeholder="Escriba el motivo..."
+                    placeholder="Ej: Ya no es vigente..."
                     multiline
+                    blurOnSubmit={true}
+                    onSubmitEditing={() => Keyboard.dismiss()}
                   />
                 </View>
+
                 <View style={styles.modalButtons}>
                   <TouchableOpacity onPress={() => setDeleteModalVisible(false)} disabled={isSaving}>
                     <ThemedText style={styles.cancelLabel}>Cancelar</ThemedText>
@@ -261,7 +342,11 @@ export default function StreetsScreen() {
                     onPress={handleDeactivation}
                     disabled={isSaving}
                   >
-                    {isSaving ? <ActivityIndicator color="white" size="small" /> : <ThemedText style={styles.saveBtnText}>Confirmar Baja</ThemedText>}
+                    {isSaving ? (
+                      <ActivityIndicator color="white" size="small" />
+                    ) : (
+                      <ThemedText style={styles.saveBtnText}>Confirmar Baja</ThemedText>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -278,19 +363,21 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12, color: '#333' },
   addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, justifyContent: 'center' },
-  streetItem: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
-  streetName: { fontSize: 16, fontWeight: 'bold' },
+  itemRow: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
+  itemName: { fontSize: 16, fontWeight: 'bold' },
   actionRow: { flexDirection: 'row', gap: 20 },
   badge: { alignSelf: 'flex-start', paddingHorizontal: 6, borderRadius: 4, marginTop: 4 },
   badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '100%' },
-  modalInput: { borderBottomWidth: 1, borderBottomColor: '#007AFF', marginVertical: 15, fontSize: 16, paddingVertical: 8, color: '#333' },
-  modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 25, marginTop: 20 },
-  cancelLabel: { color: '#666', fontWeight: '500' },
-  saveBtn: { backgroundColor: '#28a745', minWidth: 100, height: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  saveBtnText: { color: 'white', fontWeight: 'bold' },
+  modalInput: { borderBottomWidth: 1, borderBottomColor: '#007AFF', marginBottom: 15, fontSize: 16, paddingVertical: 8, color: '#333' },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
   labelSmall: { fontSize: 12, color: '#666' },
+  modalInputSmall: { borderBottomWidth: 1, borderBottomColor: '#007AFF', fontSize: 16, paddingVertical: 5, color: '#333' },
+  modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 25, marginTop: 30 },
+  cancelLabel: { color: '#666', fontWeight: '500' },
+  saveBtn: { backgroundColor: '#28a745', minWidth: 120, height: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+  saveBtnText: { color: 'white', fontWeight: 'bold' },
   deleteHeader: { borderBottomWidth: 1, borderBottomColor: '#eee', marginBottom: 15, paddingBottom: 10 },
   deleteTitle: { color: '#ff4444', fontSize: 18, fontWeight: 'bold' },
   deleteText: { fontSize: 14, color: '#444' }

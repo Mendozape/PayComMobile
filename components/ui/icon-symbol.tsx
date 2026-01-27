@@ -18,6 +18,10 @@ const MAPPING = {
   'road.lanes': 'map',
   'line.3.horizontal': 'menu',
 
+  // Fees
+  'cash.fill': 'payments',
+
+
   // Profile
   'person.fill': 'person',
 
@@ -27,6 +31,7 @@ const MAPPING = {
   'trash.fill': 'delete',
   'camera.fill': 'photo-camera',
   'rectangle.portrait.and.arrow.right': 'logout',
+  'trash': 'delete',      
 } as const;
 
 type IconSymbolName = keyof typeof MAPPING;

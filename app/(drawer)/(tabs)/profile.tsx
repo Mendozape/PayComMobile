@@ -15,13 +15,17 @@ export default function ProfileScreen() {
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState(''); 
-  // Estados para contraseña
+  
+  // Password states
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  /**
+   * Fetch user data from Laravel API on component mount
+   */
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -35,7 +39,11 @@ export default function ProfileScreen() {
         setPhone(response.data.phone || ''); 
         
         if (response.data.profile_photo_path) {
-          setImageUri(`http://192.168.1.16:8000/storage/images/${response.data.profile_photo_path}`);
+          const photoUrl = `http://192.168.1.16:8000/storage/images/${response.data.profile_photo_path}`;
+          setImageUri(photoUrl);
+
+          // PERSISTENCE: Save photo URL to storage so TabLayout can access it
+          await AsyncStorage.setItem('userProfilePhoto', photoUrl);
         }
       } catch (error) {
         console.error("Fetch Error:", error);
@@ -44,6 +52,9 @@ export default function ProfileScreen() {
     fetchUserData();
   }, []);
 
+  /**
+   * Open Image Library to pick a profile picture
+   */
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -54,13 +65,16 @@ export default function ProfileScreen() {
     if (!result.canceled) setImageUri(result.assets[0].uri);
   };
 
+  /**
+   * Send updated profile data to Laravel backend
+   */
   const handleSaveProfile = async () => {
     if (!name) {
       Alert.alert("Error", "El nombre es obligatorio");
       return;
     }
 
-    // VALIDACIÓN DE CONTRASEÑA OPCIONAL
+    // Optional password validation
     if (password.length > 0) {
       if (password.length < 6) {
         Alert.alert("Error", "La nueva contraseña debe tener al menos 6 caracteres");
@@ -81,12 +95,13 @@ export default function ProfileScreen() {
       formData.append('email', email); 
       formData.append('phone', phone); 
 
-      // Solo enviamos el password si el usuario escribió algo
+      // Send password only if user typed something
       if (password.length > 0) {
         formData.append('password', password);
         formData.append('password_confirmation', passwordConfirmation);
       }
 
+      // Handle file upload if image is local (not a remote URL)
       if (imageUri && !imageUri.startsWith('http')) {
         const filename = imageUri.split('/').pop() || 'photo.jpg';
         const match = /\.(\w+)$/.exec(filename);
@@ -107,10 +122,21 @@ export default function ProfileScreen() {
         },
       });
 
-      Alert.alert("Éxito", "Perfil actualizado correctamente");
-      // Limpiamos los campos de password después de guardar
+      // SUCCESS: Sync local storage with the new image so Tab bar can update
+      if (imageUri) {
+        await AsyncStorage.setItem('userProfilePhoto', imageUri);
+      }
+
+      // Clear password fields
       setPassword('');
       setPasswordConfirmation('');
+
+      // Show success message and redirect to Home
+      Alert.alert(
+        "Éxito", 
+        "Perfil actualizado correctamente",
+        [{ text: "OK", onPress: () => router.replace('/(tabs)/home') }]
+      );
       
     } catch (e: any) {
       console.error("Save Error:", e.response?.data || e.message);
@@ -123,11 +149,6 @@ export default function ProfileScreen() {
     } finally {
       setIsUploading(false);
     }
-  };
-
-  const handleLogout = async () => {
-    await AsyncStorage.multiRemove(['isLoggedIn', 'userToken']);
-    router.replace('/'); 
   };
 
   return (
@@ -177,7 +198,7 @@ export default function ProfileScreen() {
             keyboardType="phone-pad"
           />
 
-          {/* SECCIÓN DE CONTRASEÑA */}
+          {/* SECURITY SECTION */}
           <View style={styles.passwordSection}>
             <ThemedText type="subtitle" style={{ marginTop: 10 }}>Seguridad</ThemedText>
             
@@ -212,11 +233,6 @@ export default function ProfileScreen() {
             </ThemedText>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.logoutItem} onPress={handleLogout}>
-          <IconSymbol size={24} name="rectangle.portrait.and.arrow.right" color="#ff4444" />
-          <ThemedText style={styles.logoutLabel}>Cerrar Sesión</ThemedText>
-        </TouchableOpacity>
       </ThemedView>
     </ParallaxScrollView>
   );
@@ -235,6 +251,4 @@ const styles = StyleSheet.create({
   disabledInput: { color: '#999', borderBottomColor: '#eee' }, 
   saveButton: { backgroundColor: '#28a745', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 30 },
   saveButtonText: { color: 'white', fontWeight: 'bold' },
-  logoutItem: { flexDirection: 'row', alignItems: 'center', gap: 15, paddingVertical: 15, borderTopWidth: 1, borderTopColor: '#eee', marginTop: 10 },
-  logoutLabel: { color: '#ff4444', fontWeight: 'bold' }
 });
