@@ -1,44 +1,49 @@
-console.log('🔥 CUSTOM ICON SYMBOL LOADED');
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
-/**
- * Central icon mapping (SF-style names → Material Icons)
- * This mapping is used on ALL platforms.
- */
 const MAPPING = {
+  // Navigation & UI
   'house.fill': 'home',
-  'paperplane.fill': 'send',
-  'chevron.left.forwardslash.chevron.right': 'code',
-  'chevron.right': 'chevron-right',
-
-  // Streets
-  'road.fill': 'map',
-  'map.fill': 'map',
-  'road.lanes': 'map',
   'line.3.horizontal': 'menu',
-
-  // Fees
-  'cash.fill': 'payments',
-
-
-  // Profile
-  'person.fill': 'person',
-
+  'chevron.right': 'chevron-right',
+  'chevron.down': 'keyboard-arrow-down',
+  'chevron.left.forwardslash.chevron.right': 'code',
+  
   // Actions
   'plus': 'add',
   'pencil': 'edit',
   'trash.fill': 'delete',
+  'trash': 'delete',
+  'xmark': 'close',
+  'checkmark': 'check',
+  'magnifyingglass': 'search',
+  
+  // User & Profile
+  'person.fill': 'person',
+  'person.circle.fill': 'account-circle',
   'camera.fill': 'photo-camera',
   'rectangle.portrait.and.arrow.right': 'logout',
-  'trash': 'delete',      
+  
+  // Finance & Business
+  'cash.fill': 'attach-money',
+  'creditcard.fill': 'receipt-long',
+  'tags.fill': 'local-offer',
+  'dollarsign.circle.fill': 'monetization-on',
+  
+  // Property Specific
+  'building.2.fill': 'business',
+  'location.fill': 'location-on',
+  'pin.fill': 'place',
+  'map.fill': 'map',
+
+  // Communication
+  'paperplane.fill': 'send',
+  'envelope.fill': 'email',
+  'bell.fill': 'notifications',
 } as const;
 
 type IconSymbolName = keyof typeof MAPPING;
 
-/**
- * Cross-platform icon component that ALWAYS uses MaterialIcons.
- */
 export function IconSymbol({
   name,
   size = 24,
@@ -50,19 +55,10 @@ export function IconSymbol({
   color: string | OpaqueColorValue;
   style?: StyleProp<TextStyle>;
 }) {
-  const iconName = MAPPING[name];
-
-  if (!iconName) {
-    console.warn('Missing icon mapping:', name);
+  const mappedName = MAPPING[name];
+  if (!mappedName) {
+    console.warn(`⚠️ Icon "${name}" not found`);
     return null;
   }
-
-  return (
-    <MaterialIcons
-      name={iconName}
-      size={size}
-      color={color}
-      style={style}
-    />
-  );
+  return <MaterialIcons name={mappedName as any} size={size} color={color} style={style} />;
 }
