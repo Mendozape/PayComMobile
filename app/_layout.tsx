@@ -1,25 +1,25 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-// Main layout component that wraps the entire application
+/**
+ * RootLayout component
+ * Handles the main stack and global theme providers.
+ */
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   return (
-    // Apply theme based on the device color scheme (dark or light)
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* The 'index' screen is the entry point (app/index.tsx). 
-            It handles the initial auth check and Login UI. 
-        */}
-        <Stack.Screen name="index" /> 
-        
-        {/* The '(tabs)' group contains the protected home and explore screens.
-            Accessed only after a successful login.
-        */}
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
+          {/* Handles initial auth check and Login UI */}
+          <Stack.Screen name="index" /> 
+          {/* Main application container with Drawer and Tabs */}
+          <Stack.Screen name="drawer" />
+        </Stack>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

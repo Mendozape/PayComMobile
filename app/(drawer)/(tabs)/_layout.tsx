@@ -11,7 +11,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 /**
  * TabLayout Component
- * Configures the Bottom Tab Bar and registers hidden administrative routes.
+ * Manages the bottom tab navigation and top header with drawer trigger.
  */
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -19,12 +19,16 @@ export default function TabLayout() {
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
 
   /**
-   * Sync profile photo for the bottom tab icon.
+   * Effect to load the user profile picture from local storage.
    */
   useEffect(() => {
     const loadPhoto = async () => {
-      const photo = await AsyncStorage.getItem('userProfilePhoto');
-      if (photo) setUserPhoto(photo);
+      try {
+        const photo = await AsyncStorage.getItem('userProfilePhoto');
+        if (photo) setUserPhoto(photo);
+      } catch (e) {
+        console.error("Error loading tab photo:", e);
+      }
     };
     loadPhoto();
   }, []);
@@ -43,7 +47,7 @@ export default function TabLayout() {
           backgroundColor: colorScheme === 'dark' ? '#1a1a1a' : '#ffffff',
           height: Platform.OS === 'ios' ? 88 : 60,
         },
-        // Sidebar Toggle Button
+        // Header Left: Toggle for the side drawer menu
         headerLeft: () => (
           <Pressable
             onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
@@ -54,7 +58,7 @@ export default function TabLayout() {
         ),
       }}
     >
-      {/* --- VISIBLE TABS --- */}
+      {/* 🏠 Main Home Tab */}
       <Tabs.Screen
         name="home"
         options={{
@@ -63,10 +67,11 @@ export default function TabLayout() {
         }}
       />
 
+      {/* 👤 Profile Tab with Dynamic Avatar */}
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Mi cuenta',
+          title: 'Mi Cuenta',
           tabBarIcon: ({ color }) => (
             userPhoto ? (
               <Image 
@@ -80,12 +85,34 @@ export default function TabLayout() {
         }}
       />
 
-      {/* --- HIDDEN ROUTES (Accessible via Drawer only) --- */}
-      <Tabs.Screen name="addresses" options={{ title: 'Predios', href: null }} />
-      <Tabs.Screen name="streets" options={{ title: 'Calles', href: null }} />
-      <Tabs.Screen name="fees" options={{ title: 'Cuotas', href: null }} />
-      <Tabs.Screen name="expenses" options={{ title: 'Gastos', href: null }} />
-      <Tabs.Screen name="expense-categories" options={{ title: 'Categorías', href: null }} />
+      {/* 🚫 HIDDEN SCREENS
+          These screens are part of the navigation stack but do not show icons 
+          in the bottom tab bar (href: null).
+      */}
+      
+      {/* Residents/Users Module */}
+      <Tabs.Screen 
+        name="residents" 
+        options={{ 
+          title: 'Gestión de Residentes', 
+          href: null 
+        }} 
+      />
+
+      {/* Catalog & Maintenance Screens */}
+      <Tabs.Screen name="streets" options={{ title: 'Catálogo de Calles', href: null }} />
+      <Tabs.Screen name="fees" options={{ title: 'Cuotas de Mantenimiento', href: null }} />
+      <Tabs.Screen name="expense-categories" options={{ title: 'Categorías de Gastos', href: null }} />
+      <Tabs.Screen name="expenses" options={{ title: 'Control de Gastos', href: null }} />
+      <Tabs.Screen name="addresses" options={{ title: 'Catálogo de Predios', href: null }} />
+      
+      {/* Reports & Financial Statements */}
+      <Tabs.Screen name="statement" options={{ title: 'Estado de Cuenta', href: null }} />
+      <Tabs.Screen name="reports" options={{ title: 'Generador de Reportes', href: null }} />
+      
+      {/* Integrated Payment Operations */}
+      <Tabs.Screen name="create-payment" options={{ title: 'Registrar Nuevo Pago', href: null }} />
+      <Tabs.Screen name="payment-history" options={{ title: 'Historial de Pagos', href: null }} />
 
     </Tabs>
   );
