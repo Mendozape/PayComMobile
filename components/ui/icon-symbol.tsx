@@ -32,6 +32,8 @@ const MAPPING = {
   'camera.fill': 'photo-camera',
   'rectangle.portrait.and.arrow.right': 'logout',
   'person.badge.plus.fill': 'person-add', // Added for create resident
+  'lock.fill': 'lock',
+  'key.fill': 'vpn-key',
   
   // --- Finance & Business ---
   'cash.fill': 'attach-money',
