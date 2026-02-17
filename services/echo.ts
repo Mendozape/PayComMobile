@@ -2,26 +2,29 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-let echo: Echo<any> | null = null;
-let echoToken: string | null = null;
+let echoInstance: Echo<any> | null = null;
 
+/**
+ * Initializes the Echo instance as a singleton.
+ * Prevents multiple connections that cause event listener leaks.
+ */
 export const initEcho = async (): Promise<Echo<any> | null> => {
   try {
     const token = await AsyncStorage.getItem('userToken');
     if (!token) return null;
 
-    const isConnected = echo?.connector?.pusher?.connection?.state === 'connected';
-    if (echo && echoToken === token && isConnected) return echo;
-
-    if (echo) {
-      echo.disconnect();
-      echo = null;
+    // If already connected and token is the same, reuse instance
+    if (echoInstance && echoInstance.connector.pusher.connection.state === 'connected') {
+      return echoInstance;
     }
 
-    echoToken = token;
-    (global as any).Pusher = Pusher;
+    // Clean up previous instance if it exists but is not connected
+    if (echoInstance) {
+      echoInstance.disconnect();
+    }
 
-    echo = new Echo({
+    (global as any).Pusher = Pusher;
+    echoInstance = new Echo({
       broadcaster: 'pusher',
       key: '66e12194484209bfb23d',
       cluster: 'mt1',
@@ -36,19 +39,18 @@ export const initEcho = async (): Promise<Echo<any> | null> => {
       },
     });
 
-    return echo;
+    return echoInstance;
   } catch (error) {
-    console.error('❌ [ECHO] Init failed');
+    console.error('❌ [ECHO] Critical Init Error');
     return null;
   }
 };
 
-export const getEcho = () => echo;
+export const getEcho = () => echoInstance;
 
 export const disconnectEcho = () => {
-  if (echo) {
-    echo.disconnect();
-    echo = null;
-    echoToken = null;
+  if (echoInstance) {
+    echoInstance.disconnect();
+    echoInstance = null;
   }
 };

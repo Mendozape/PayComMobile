@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
-  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard 
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -51,7 +52,7 @@ export default function FeesScreen() {
   const [deactivationReason, setDeactivationReason] = useState<string>(''); 
 
   /**
-   * 🛡️ INITIAL LOAD
+   * Initial data load: User profile and fees catalog
    */
   useEffect(() => {
     const initialize = async () => {
@@ -73,6 +74,9 @@ export default function FeesScreen() {
   const canEdit = can('Editar-cuotas');
   const canDeactivate = can('Eliminar-cuotas');
 
+  /**
+   * Data fetching logic
+   */
   const fetchFees = async () => {
     setLoading(true);
     try {
@@ -111,13 +115,16 @@ export default function FeesScreen() {
     setDeleteModalVisible(true);
   };
 
+  /**
+   * Handles logical deletion with success alert
+   */
   const handleDeactivation = async () => {
     if (!deactivationReason.trim()) {
-      Alert.alert("Error", "Debes especificar un motivo de la baja.");
+      Alert.alert("Atención", "Debes especificar un motivo para la baja.");
       return;
     }
 
-    setIsSaving(true); // Bloquea botones y activa relojito
+    setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
       await axios.delete(`${ENDPOINT}/${feeToDelete?.id}`, {
@@ -126,22 +133,28 @@ export default function FeesScreen() {
       });
 
       setDeleteModalVisible(false);
-      Alert.alert("Éxito", "Tarifa dada de baja exitosamente.");
-      fetchFees();
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", "La cuota ha sido dada de baja correctamente.");
+        fetchFees();
+      });
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Fallo al dar de baja la tarifa.";
+      const msg = error.response?.data?.message || "Fallo al intentar dar de baja la cuota.";
       Alert.alert("Error", msg);
     } finally {
-      setIsSaving(false); // Libera botones
+      setIsSaving(false);
     }
   };
 
+  /**
+   * Handles Save/Update operation with success alert
+   */
   const handleSave = async () => {
     if (!feeName.trim() || !amountOccupied || !amountEmpty || !amountLand) {
-      Alert.alert("Error", "Faltan datos obligatorios.");
+      Alert.alert("Atención", "Por favor completa todos los campos obligatorios.");
       return;
     }
-    setIsSaving(true); // Bloquea botones y activa relojito
+    setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
@@ -153,17 +166,27 @@ export default function FeesScreen() {
         description: description
       };
 
+      let successMsg = "";
       if (editingFee) {
         await axios.put(`${ENDPOINT}/${editingFee.id}`, payload, config);
+        successMsg = "Cuota actualizada correctamente.";
       } else {
         await axios.post(ENDPOINT, payload, config);
+        successMsg = "Cuota registrada exitosamente.";
       }
+
       setModalVisible(false);
-      fetchFees();
-    } catch (error) {
-      Alert.alert("Error", "Error al guardar la cuota.");
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", successMsg);
+        fetchFees();
+      });
+
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Hubo un error al guardar la cuota.";
+      Alert.alert("Error", msg);
     } finally {
-      setIsSaving(false); // Libera botones
+      setIsSaving(false);
     }
   };
 
@@ -193,7 +216,7 @@ export default function FeesScreen() {
           data={filteredFees}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.itemRow}>
+            <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.itemName}>{item.name}</ThemedText>
                 <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
@@ -229,14 +252,14 @@ export default function FeesScreen() {
             >
               <View style={styles.modalContent}>
                 <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
-                    {editingFee ? 'Editar' : 'Nueva'} Cuota
+                    {editingFee ? 'Editar Cuota' : 'Nueva Cuota'}
                 </ThemedText>
 
                 <TextInput 
                   style={styles.modalInput}
                   value={feeName}
                   onChangeText={setFeeName}
-                  placeholder="Nombre"
+                  placeholder="Nombre de la cuota"
                   placeholderTextColor="#aaa"
                 />
 
@@ -277,7 +300,7 @@ export default function FeesScreen() {
                   style={[styles.modalInput, { marginTop: 15 }]}
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="Descripción"
+                  placeholder="Descripción breve..."
                   placeholderTextColor="#aaa"
                 />
 
@@ -303,7 +326,7 @@ export default function FeesScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: DEACTIVATION (REASON) --- */}
+      {/* --- MODAL: DEACTIVATION --- */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
@@ -326,16 +349,15 @@ export default function FeesScreen() {
                     style={[styles.modalInput, { borderBottomColor: '#ff4444' }]}
                     value={deactivationReason}
                     onChangeText={setDeactivationReason}
-                    placeholder="Ej: Ya no es vigente..."
+                    placeholder="Escriba el motivo de la baja..."
+                    placeholderTextColor="#aaa"
                     multiline
-                    blurOnSubmit={true}
-                    onSubmitEditing={() => Keyboard.dismiss()}
                   />
                 </View>
 
                 <View style={styles.modalButtons}>
                   <TouchableOpacity onPress={() => setDeleteModalVisible(false)} disabled={isSaving}>
-                    <ThemedText style={styles.cancelLabel}>Cancelar</ThemedText>
+                    <ThemedText style={styles.cancelLabel}>Regresar</ThemedText>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={[styles.saveBtn, { backgroundColor: '#ff4444' }, isSaving && { opacity: 0.7 }]} 

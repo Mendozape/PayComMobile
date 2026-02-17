@@ -23,15 +23,16 @@ const MAPPING = {
   'xmark': 'close',
   'checkmark': 'check',
   'ban': 'block',
-  'arrow.counterclockwise': 'restore', // Added for user reactivation
+  'arrow.counterclockwise': 'restore',
 
   // --- User & Profile ---
   'person.fill': 'person',
   'person.circle.fill': 'account-circle',
-  'person.2.fill': 'people',           // Added for Drawer/List
+  'person.crop.circle.fill': 'account-circle',
+  'person.2.fill': 'people',
   'camera.fill': 'photo-camera',
   'rectangle.portrait.and.arrow.right': 'logout',
-  'person.badge.plus.fill': 'person-add', // Added for create resident
+  'person.badge.plus.fill': 'person-add',
   'lock.fill': 'lock',
   'key.fill': 'vpn-key',
   
@@ -54,6 +55,7 @@ const MAPPING = {
 
   // --- Communication ---
   'paperplane.fill': 'send',
+  'message.fill': 'message', // <-- AGREGADO AQUÍ
   'envelope.fill': 'email',
   'bell.fill': 'notifications',
 } as const;
@@ -76,6 +78,7 @@ export function IconSymbol({
 }) {
   const mappedName = MAPPING[name];
   
+  // Warn developer if the requested icon is missing from the mapping
   if (!mappedName) {
     console.warn(`⚠️ Icon name "${name}" is not defined in the MAPPING object.`);
     return null;

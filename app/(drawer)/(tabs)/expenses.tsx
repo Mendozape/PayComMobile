@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
-  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard 
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,6 +16,10 @@ import usePermission from '@/hooks/usePermission';
 const ENDPOINT = 'http://192.168.1.16:8000/api/expenses';
 const CAT_ENDPOINT = 'http://192.168.1.16:8000/api/expense_categories';
 
+/**
+ * ExpensesScreen Component
+ * Manages the list of expenses, allowing creation, editing, and deletion with justification.
+ */
 export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -36,6 +41,9 @@ export default function ExpensesScreen() {
   const [expenseToDelete, setExpenseToDelete] = useState<any>(null);
   const [deactivationReason, setDeactivationReason] = useState('');
 
+  /**
+   * Initial data load: profile, expenses, and categories.
+   */
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -53,6 +61,9 @@ export default function ExpensesScreen() {
 
   const { can } = usePermission(user);
 
+  /**
+   * Fetches expenses list from API.
+   */
   const fetchExpenses = async () => {
     setLoading(true);
     try {
@@ -67,6 +78,9 @@ export default function ExpensesScreen() {
     }
   };
 
+  /**
+   * Fetches active expense categories.
+   */
   const fetchCategories = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -78,6 +92,9 @@ export default function ExpensesScreen() {
     } catch (e) { console.error(e); }
   };
 
+  /**
+   * Prepares and opens the form modal.
+   */
   const openForm = (item: any = null) => {
     setEditingId(item?.id || null);
     setCategoryId(item?.expense_category_id?.toString() || '');
@@ -88,33 +105,59 @@ export default function ExpensesScreen() {
     setModalVisible(true);
   };
 
+  /**
+   * Opens the confirmation modal for deletion.
+   */
   const openDelete = (item: any) => {
     setExpenseToDelete(item);
     setDeactivationReason('');
     setDeleteModalVisible(true);
   };
 
+  /**
+   * Logic for Save/Update operations.
+   */
   const handleSave = async () => {
-    if (!categoryId || !amount || !expenseDate) return Alert.alert("Error", "Faltan campos.");
+    if (!categoryId || !amount || !expenseDate) {
+        Alert.alert("Atención", "Por favor completa todos los campos obligatorios.");
+        return;
+    }
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
       const payload = { expense_category_id: categoryId, amount, expense_date: expenseDate };
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      if (editingId) await axios.put(`${ENDPOINT}/${editingId}`, payload, config);
-      else await axios.post(ENDPOINT, payload, config);
+      
+      let successMsg = "";
+      if (editingId) {
+        await axios.put(`${ENDPOINT}/${editingId}`, payload, config);
+        successMsg = "Gasto actualizado correctamente.";
+      } else {
+        await axios.post(ENDPOINT, payload, config);
+        successMsg = "Gasto registrado exitosamente.";
+      }
+
       setModalVisible(false);
-      fetchExpenses();
-    } catch (e) {
-      Alert.alert("Error", "Fallo al guardar.");
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", successMsg);
+        fetchExpenses();
+      });
+
+    } catch (e: any) {
+      Alert.alert("Error", e.response?.data?.message || "Fallo al guardar el registro.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  /**
+   * Logic for soft deletion with reason.
+   */
   const handleDelete = async () => {
     if (deactivationReason.trim().length < 10) {
-        return Alert.alert("Error", "El motivo debe tener al menos 10 caracteres.");
+        Alert.alert("Atención", "El motivo debe tener al menos 10 caracteres.");
+        return;
     }
     setIsSaving(true);
     try {
@@ -123,11 +166,16 @@ export default function ExpensesScreen() {
         headers: { Authorization: `Bearer ${token}` },
         data: { reason: deactivationReason }
       });
+      
       setDeleteModalVisible(false);
-      fetchExpenses();
-      Alert.alert("Éxito", "Gasto eliminado.");
-    } catch (e) {
-      Alert.alert("Error", "No se pudo eliminar.");
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", "El gasto ha sido eliminado correctamente.");
+        fetchExpenses();
+      });
+
+    } catch (e: any) {
+      Alert.alert("Error", e.response?.data?.message || "No se pudo realizar la eliminación.");
     } finally {
       setIsSaving(false);
     }
@@ -138,7 +186,12 @@ export default function ExpensesScreen() {
   return (
     <ThemedView style={styles.container}>
       <View style={styles.headerActions}>
-        <TextInput style={styles.searchInput} placeholder="Buscar..." onChangeText={setSearch} />
+        <TextInput 
+            style={styles.searchInput} 
+            placeholder="Buscar por categoría..." 
+            placeholderTextColor="#888"
+            onChangeText={setSearch} 
+        />
         {can('Crear-gastos') && (
           <TouchableOpacity style={styles.addButton} onPress={() => openForm()}>
             <IconSymbol name="plus" size={24} color="white" />
@@ -150,11 +203,12 @@ export default function ExpensesScreen() {
         data={expenses.filter(e => e.category?.name?.toLowerCase().includes(search.toLowerCase()))}
         keyExtractor={(item) => `exp-${item.id}`}
         renderItem={({ item }) => (
-          <View style={styles.itemRow}>
+          <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
             <View style={{ flex: 1 }}>
               <ThemedText style={styles.itemName}>{item.category?.name || 'N/A'}</ThemedText>
               <ThemedText style={styles.amountText}>${parseFloat(item.amount).toFixed(2)}</ThemedText>
-              {item.deleted_at && <ThemedText style={styles.deletedLabel}>Gasto Eliminado / Inactivo</ThemedText>}
+              <ThemedText style={styles.dateSubtext}>{item.expense_date.split(' ')[0]}</ThemedText>
+              {item.deleted_at && <ThemedText style={styles.deletedLabel}>Gasto Eliminado</ThemedText>}
             </View>
             <View style={styles.actionRow}>
               {!item.deleted_at ? (
@@ -178,7 +232,7 @@ export default function ExpensesScreen() {
         )}
       />
 
-      {/* MODAL FORMULARIO UNIFICADO */}
+      {/* FORM MODAL */}
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView 
@@ -189,7 +243,7 @@ export default function ExpensesScreen() {
               <View style={styles.modalContent}>
                 {showCategoryList ? (
                   <View style={{ width: '100%', height: 350 }}>
-                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Categorías</ThemedText>
+                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Seleccionar Categoría</ThemedText>
                     <FlatList 
                       data={categories}
                       keyExtractor={(item) => `cat-${item.id}`}
@@ -204,7 +258,7 @@ export default function ExpensesScreen() {
                       )}
                     />
                     <TouchableOpacity onPress={() => setShowCategoryList(false)} style={{ marginTop: 15 }}>
-                      <ThemedText style={{ color: 'red', textAlign: 'center', fontWeight: 'bold' }}>VOLVER</ThemedText>
+                      <ThemedText style={{ color: '#007AFF', textAlign: 'center', fontWeight: 'bold' }}>REGRESAR</ThemedText>
                     </TouchableOpacity>
                   </View>
                 ) : (
@@ -218,10 +272,10 @@ export default function ExpensesScreen() {
                     </TouchableOpacity>
 
                     <ThemedText style={styles.labelSmall}>Monto $ *</ThemedText>
-                    <TextInput style={styles.modalInput} value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="numeric" />
+                    <TextInput style={styles.modalInput} value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="numeric" placeholderTextColor="#aaa" />
 
-                    <ThemedText style={styles.labelSmall}>Fecha *</ThemedText>
-                    <TextInput style={styles.modalInput} value={expenseDate} onChangeText={setExpenseDate} placeholder="AAAA-MM-DD" />
+                    <ThemedText style={styles.labelSmall}>Fecha (AAAA-MM-DD) *</ThemedText>
+                    <TextInput style={styles.modalInput} value={expenseDate} onChangeText={setExpenseDate} placeholder="AAAA-MM-DD" placeholderTextColor="#aaa" />
 
                     <View style={styles.modalButtons}>
                       <TouchableOpacity onPress={() => setModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
@@ -237,22 +291,19 @@ export default function ExpensesScreen() {
         </View>
       </Modal>
 
-      {/* MODAL ELIMINAR CON MOTIVO */}
+      {/* DELETION MODAL */}
       <Modal visible={deleteModalVisible} transparent animationType="fade" onRequestClose={() => setDeleteModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ width: '100%', alignItems: 'center' }}
-          >
             <View style={styles.modalContent}>
               <ThemedText style={styles.deleteTitle}>Confirmar Eliminación</ThemedText>
-              <ThemedText style={{marginBottom: 10}}>¿Por qué desea eliminar este gasto?</ThemedText>
+              <ThemedText style={{marginBottom: 10}}>¿Por qué desea eliminar este registro de gasto?</ThemedText>
               
               <TextInput 
-                style={[styles.modalInput, {height: 80, textAlignVertical: 'top'}]} 
+                style={[styles.modalInput, {height: 80, textAlignVertical: 'top', borderBottomColor: '#ff4444'}]} 
                 value={deactivationReason} 
                 onChangeText={setDeactivationReason} 
-                placeholder="Motivo (mín. 10 caracteres)" 
+                placeholder="Motivo detallado (mín. 10 caracteres)" 
+                placeholderTextColor="#aaa"
                 multiline
               />
 
@@ -263,11 +314,10 @@ export default function ExpensesScreen() {
                     onPress={handleDelete}
                     disabled={isSaving}
                 >
-                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Eliminar</ThemedText>}
+                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Eliminar Gasto</ThemedText>}
                 </TouchableOpacity>
               </View>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
     </ThemedView>
@@ -277,21 +327,22 @@ export default function ExpensesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   headerActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12 },
-  addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10 },
+  searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12, color: '#333' },
+  addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, justifyContent: 'center' },
   itemRow: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
   itemName: { fontSize: 16, fontWeight: 'bold' },
-  amountText: { color: '#28a745', fontWeight: 'bold' },
+  amountText: { color: '#28a745', fontWeight: 'bold', fontSize: 15 },
+  dateSubtext: { fontSize: 12, color: '#888' },
   deletedLabel: { color: '#ff4444', fontSize: 11, fontWeight: 'bold', marginTop: 2 },
   actionRow: { flexDirection: 'row', gap: 15 },
   iconBtn: { padding: 5 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '100%', elevation: 5 },
-  labelSmall: { fontSize: 12, color: '#666', marginTop: 10 },
-  modalInput: { borderBottomWidth: 1, borderBottomColor: '#007AFF', marginVertical: 5, padding: 8, fontSize: 16 },
-  pickerFake: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#007AFF' },
+  labelSmall: { fontSize: 11, color: '#888', marginTop: 15, fontWeight: 'bold', textTransform: 'uppercase' },
+  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginVertical: 5, paddingVertical: 8, fontSize: 16, color: '#333' },
+  pickerFake: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#28a745' },
   catItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 25, marginTop: 25, alignItems: 'center' },
-  saveBtn: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, minWidth: 100, alignItems: 'center' },
+  saveBtn: { backgroundColor: '#28a745', paddingHorizontal: 20, height: 45, borderRadius: 10, justifyContent: 'center', alignItems: 'center', minWidth: 110 },
   deleteTitle: { color: '#ff4444', fontSize: 18, fontWeight: 'bold', marginBottom: 15 }
 });

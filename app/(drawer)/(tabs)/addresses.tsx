@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, TextInput, 
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, 
-  Platform 
+  Platform, InteractionManager 
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 
-// Corrected imports
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view'; 
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -42,6 +41,9 @@ export default function AddressesScreen() {
   const [deactivationReason, setDeactivationReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  /**
+   * Initial data load
+   */
   useEffect(() => {
     const init = async () => {
       const data = await AsyncStorage.getItem('userData');
@@ -54,6 +56,9 @@ export default function AddressesScreen() {
 
   const { can } = usePermission(user);
 
+  /**
+   * Fetch logic
+   */
   const fetchAddresses = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -61,7 +66,7 @@ export default function AddressesScreen() {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } 
       });
       setAddresses(res.data.data || res.data);
-    } catch (e) { console.error("Error fetching addresses:", e); }
+    } catch (e) { console.error(e); }
   };
 
   const fetchStreets = async () => {
@@ -69,7 +74,7 @@ export default function AddressesScreen() {
       const token = await AsyncStorage.getItem('userToken');
       const res = await axios.get(`${API_BASE}/streets`, { headers: { Authorization: `Bearer ${token}` } });
       setStreets((res.data.data || res.data).filter((s: any) => !s.deleted_at));
-    } catch (e) { console.error("Error fetching streets:", e); }
+    } catch (e) { console.error(e); }
   };
 
   const fetchUsers = async () => {
@@ -77,7 +82,7 @@ export default function AddressesScreen() {
       const token = await AsyncStorage.getItem('userToken');
       const res = await axios.get(`${API_BASE}/usuarios`, { headers: { Authorization: `Bearer ${token}` } });
       setUsers(res.data.data || res.data);
-    } catch (e) { console.error("Error fetching users:", e); }
+    } catch (e) { console.error(e); }
   };
 
   const openForm = (item: any = null) => {
@@ -95,8 +100,11 @@ export default function AddressesScreen() {
     setModalVisible(true);
   };
 
+  /**
+   * Save and Update logic
+   */
   const handleSave = async () => {
-    if (!streetId || !streetNumber || !residentId) return Alert.alert("Error", "Faltan campos obligatorios.");
+    if (!streetId || !streetNumber || !residentId) return Alert.alert("Atención", "Por favor, completa los campos obligatorios.");
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -111,16 +119,33 @@ export default function AddressesScreen() {
         community: 'PRADOS DE LA HUERTA' 
       };
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
-      if (editingId) await axios.put(`${API_BASE}/addresses/${editingId}`, payload, config);
-      else await axios.post(`${API_BASE}/addresses`, payload, config);
+      
+      let successMsg = "";
+      if (editingId) {
+        await axios.put(`${API_BASE}/addresses/${editingId}`, payload, config);
+        successMsg = "Datos del predio actualizados correctamente.";
+      } else {
+        await axios.post(`${API_BASE}/addresses`, payload, config);
+        successMsg = "El predio ha sido registrado exitosamente.";
+      }
+
       setModalVisible(false);
-      fetchAddresses();
-    } catch (error: any) { Alert.alert("Fallo", error.response?.data?.message || "Error al guardar."); }
-    finally { setIsSaving(false); }
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", successMsg);
+        fetchAddresses();
+      });
+
+    } catch (error: any) { 
+        Alert.alert("Error", error.response?.data?.message || "Hubo un fallo al procesar la solicitud."); 
+    } finally { setIsSaving(false); }
   };
 
+  /**
+   * Soft delete logic
+   */
   const handleDelete = async () => {
-    if (deactivationReason.trim().length < 5) return Alert.alert("Error", "Motivo demasiado corto.");
+    if (deactivationReason.trim().length < 5) return Alert.alert("Atención", "Por favor, ingresa un motivo válido (mínimo 5 caracteres).");
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -128,16 +153,23 @@ export default function AddressesScreen() {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         data: { reason: deactivationReason }
       });
+
       setDeleteModalVisible(false);
-      fetchAddresses();
-    } catch (e: any) { Alert.alert("Error", "No se pudo eliminar."); }
-    finally { setIsSaving(false); }
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", "El predio ha sido dado de baja correctamente.");
+        fetchAddresses();
+      });
+      
+    } catch (e: any) { 
+        Alert.alert("Error", e.response?.data?.message || "No se pudo realizar la baja."); 
+    } finally { setIsSaving(false); }
   };
 
   return (
     <ThemedView style={styles.container}>
       <View style={styles.headerActions}>
-        <TextInput style={styles.searchInput} placeholder="Buscar..." onChangeText={setSearch} />
+        <TextInput style={styles.searchInput} placeholder="Buscar predio..." placeholderTextColor="#888" onChangeText={setSearch} />
         {can('Crear-predios') && (
           <TouchableOpacity style={styles.addButton} onPress={() => openForm()}>
             <IconSymbol name="plus" size={24} color="white" />
@@ -149,7 +181,7 @@ export default function AddressesScreen() {
         data={addresses.filter(a => a.street?.name?.toLowerCase().includes(search.toLowerCase()) || a.user?.name?.toLowerCase().includes(search.toLowerCase()))}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <View style={[styles.card, item.deleted_at && { opacity: 0.6 }]}>
             <View style={{ flex: 1 }}>
               <ThemedText style={styles.addressTitle}>{item.street?.name} #{item.street_number}</ThemedText>
               <ThemedText style={styles.residentName}>👤 {item.user?.name || 'Vacante'}</ThemedText>
@@ -158,6 +190,7 @@ export default function AddressesScreen() {
                 {item.type === 'CASA' && (
                   <View style={[styles.badge, {backgroundColor: item.status === 'Habitada' ? '#007bff' : '#f0ad4e'}]}><ThemedText style={styles.badgeText}>{item.status}</ThemedText></View>
                 )}
+                {item.deleted_at && <View style={[styles.badge, {backgroundColor: '#ff4444'}]}><ThemedText style={styles.badgeText}>Inactivo</ThemedText></View>}
               </View>
             </View>
             
@@ -197,6 +230,7 @@ export default function AddressesScreen() {
             <View style={styles.modalContent}>
               {viewState !== 'FORM' ? (
                 <View style={{height: 400}}>
+                   <ThemedText style={styles.modalLabelTitle}>Selecciona una opción</ThemedText>
                    <FlatList 
                       data={viewState === 'STREET_PICKER' ? streets : viewState === 'USER_PICKER' ? users : viewState === 'TYPE_PICKER' ? [{id:'CASA', name:'CASA'}, {id:'TERRENO', name:'TERRENO'}] : [{id:'Habitada', name:'Habitada'}, {id:'Deshabitada', name:'Deshabitada'}]} 
                       renderItem={({item}) => (
@@ -208,21 +242,22 @@ export default function AddressesScreen() {
                            setViewState('FORM');
                         }}><ThemedText>{item.name}</ThemedText></TouchableOpacity>
                    )} />
+                   <TouchableOpacity style={styles.backBtn} onPress={() => setViewState('FORM')}><ThemedText style={{color:'#fff'}}>Regresar</ThemedText></TouchableOpacity>
                 </View>
               ) : (
                 <View>
                   <ThemedText type="subtitle">Información del Predio</ThemedText>
                   <TouchableOpacity style={styles.pickerFake} onPress={() => setViewState('STREET_PICKER')}><ThemedText>{streetName}</ThemedText></TouchableOpacity>
-                  <TextInput style={styles.input} value={streetNumber} onChangeText={setStreetNumber} placeholder="Número" keyboardType="numeric" />
+                  <TextInput style={styles.input} value={streetNumber} onChangeText={setStreetNumber} placeholder="Número exterior" keyboardType="numeric" placeholderTextColor="#888" />
                   <TouchableOpacity style={styles.pickerFake} onPress={() => setViewState('USER_PICKER')}><ThemedText>{residentName}</ThemedText></TouchableOpacity>
                   <View style={{flexDirection:'row', gap:10}}>
                     <TouchableOpacity style={[styles.pickerFake, {flex:1}]} onPress={() => setViewState('TYPE_PICKER')}><ThemedText>{type}</ThemedText></TouchableOpacity>
                     {type==='CASA' && <TouchableOpacity style={[styles.pickerFake, {flex:1}]} onPress={() => setViewState('STATUS_PICKER')}><ThemedText>{status}</ThemedText></TouchableOpacity>}
                   </View>
-                  <TextInput style={styles.input} value={monthsOverdue} onChangeText={setMonthsOverdue} keyboardType="numeric" placeholder="Meses de retraso" />
-                  <TextInput style={styles.input} value={comments} onChangeText={setComments} placeholder="Comentarios..." multiline />
+                  <TextInput style={styles.input} value={monthsOverdue} onChangeText={setMonthsOverdue} keyboardType="numeric" placeholder="Meses de retraso inicial" placeholderTextColor="#888" />
+                  <TextInput style={styles.input} value={comments} onChangeText={setComments} placeholder="Notas adicionales..." multiline placeholderTextColor="#888" />
                   <View style={styles.modalButtons}>
-                    <TouchableOpacity onPress={() => setModalVisible(false)}><ThemedText>Cerrar</ThemedText></TouchableOpacity>
+                    <TouchableOpacity onPress={() => setModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
                     <TouchableOpacity style={[styles.saveBtn, {backgroundColor: isSaving ? '#ccc' : '#28a745'}]} onPress={handleSave} disabled={isSaving}>
                       {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Guardar</ThemedText>}
                     </TouchableOpacity>
@@ -239,11 +274,12 @@ export default function AddressesScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <ThemedText style={{color:'#ff4444', fontWeight:'bold', fontSize:18}}>Dar de Baja Predio</ThemedText>
-            <TextInput style={[styles.input, {height: 80, marginTop:15}]} placeholder="Motivo..." multiline value={deactivationReason} onChangeText={setDeactivationReason} />
+            <ThemedText style={{marginTop:5, fontSize:13, color:'#666'}}>Por favor, indique el motivo de la baja para continuar.</ThemedText>
+            <TextInput style={[styles.input, {height: 80, marginTop:15}]} placeholder="Escriba aquí el motivo..." multiline value={deactivationReason} onChangeText={setDeactivationReason} placeholderTextColor="#888" />
             <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setDeleteModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
+              <TouchableOpacity onPress={() => setDeleteModalVisible(false)}><ThemedText>Regresar</ThemedText></TouchableOpacity>
               <TouchableOpacity style={[styles.saveBtn, {backgroundColor: isSaving ? '#666' : '#ff4444'}]} onPress={handleDelete} disabled={isSaving}>
-                 {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{color:'white', fontWeight: 'bold'}}>Confirmar</ThemedText>}
+                 {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{color:'white', fontWeight: 'bold'}}>Dar de Baja</ThemedText>}
               </TouchableOpacity>
             </View>
           </View>
@@ -256,9 +292,9 @@ export default function AddressesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   headerActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12 },
-  addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10 },
-  card: { backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 10, flexDirection: 'row', elevation: 2 },
+  searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12, color: '#333' },
+  addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, justifyContent: 'center' },
+  card: { backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 10, flexDirection: 'row', elevation: 2, shadowColor:'#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:4 },
   addressTitle: { fontWeight: 'bold', fontSize: 16 },
   residentName: { color: '#666', fontSize: 14, marginTop: 2 },
   badgeRow: { flexDirection: 'row', gap: 5, marginTop: 5 },
@@ -271,9 +307,11 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContainer: { width: '100%', alignItems: 'center' },
   modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '90%' },
-  input: { borderBottomWidth: 1, borderBottomColor: '#ddd', paddingVertical: 8, fontSize: 16, marginBottom: 10 },
+  modalLabelTitle: { fontWeight: 'bold', marginBottom: 10, fontSize: 16 },
+  input: { borderBottomWidth: 1, borderBottomColor: '#ddd', paddingVertical: 8, fontSize: 16, marginBottom: 10, color: '#333' },
   pickerFake: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#ddd', marginBottom: 10 },
   pickerItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20, marginTop: 25, alignItems: 'center' },
-  saveBtn: { padding: 10, borderRadius: 8, minWidth: 100, alignItems: 'center', justifyContent: 'center' }
+  saveBtn: { padding: 10, borderRadius: 8, minWidth: 110, alignItems: 'center', justifyContent: 'center' },
+  backBtn: { backgroundColor: '#007AFF', padding: 10, borderRadius: 8, alignItems: 'center', marginTop: 10 }
 });

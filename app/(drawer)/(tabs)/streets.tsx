@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
-  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard 
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -65,6 +66,9 @@ export default function StreetsScreen() {
   const canEdit = can('Editar-calles');
   const canDeactivate = can('Eliminar-calles');
 
+  /**
+   * Fetches the street catalog
+   */
   const fetchStreets = async () => {
     setLoading(true);
     try {
@@ -81,6 +85,9 @@ export default function StreetsScreen() {
     }
   };
 
+  /**
+   * Client-side search filtering
+   */
   const filteredStreets = streets.filter((s) => 
     s.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -99,9 +106,12 @@ export default function StreetsScreen() {
     setDeleteModalVisible(true);
   };
 
+  /**
+   * Logic for soft delete
+   */
   const handleDeactivation = async () => {
     if (!deactivationReason.trim()) {
-      Alert.alert("Error", "Debes especificar un motivo de la baja.");
+      Alert.alert("Atención", "Debes especificar un motivo de la baja.");
       return;
     }
     setIsSaving(true);
@@ -111,9 +121,13 @@ export default function StreetsScreen() {
         headers: { Authorization: `Bearer ${token}` },
         data: { reason: deactivationReason }
       });
+      
       setDeleteModalVisible(false);
-      Alert.alert("Éxito", "Calle dada de baja correctamente.");
-      fetchStreets();
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", "Calle dada de baja correctamente.");
+        fetchStreets();
+      });
     } catch (error: any) {
       const msg = error.response?.data?.message || "Error al procesar la baja.";
       Alert.alert("Error", msg);
@@ -122,22 +136,38 @@ export default function StreetsScreen() {
     }
   };
 
+  /**
+   * Logic for Create / Update
+   */
   const handleSave = async () => {
-    if (!streetName.trim()) return;
+    if (!streetName.trim()) {
+        Alert.alert("Atención", "El nombre de la calle es obligatorio.");
+        return;
+    }
+
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
       
+      let successMsg = "";
       if (editingStreet) {
         await axios.put(`${ENDPOINT}/${editingStreet.id}`, { name: streetName }, config);
+        successMsg = "Calle actualizada correctamente.";
       } else {
         await axios.post(ENDPOINT, { name: streetName }, config);
+        successMsg = "Calle creada exitosamente.";
       }
+
       setModalVisible(false);
-      fetchStreets();
-    } catch (error) {
-      Alert.alert("Error", "Error al guardar la calle.");
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", successMsg);
+        fetchStreets();
+      });
+
+    } catch (error: any) {
+      Alert.alert("Error", error.response?.data?.message || "Error al guardar la calle.");
     } finally {
       setIsSaving(false);
     }
@@ -169,7 +199,7 @@ export default function StreetsScreen() {
           data={filteredStreets}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.streetItem}>
+            <View style={[styles.streetItem, item.deleted_at && { opacity: 0.5 }]}>
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.streetName}>{item.name}</ThemedText>
                 <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
@@ -248,7 +278,8 @@ export default function StreetsScreen() {
                     style={[styles.modalInput, { borderBottomColor: '#ff4444' }]}
                     value={deactivationReason}
                     onChangeText={setDeactivationReason}
-                    placeholder="Escriba el motivo..."
+                    placeholder="Escriba el motivo detallado..."
+                    placeholderTextColor="#aaa"
                     multiline
                   />
                 </View>
@@ -288,7 +319,7 @@ const styles = StyleSheet.create({
   modalInput: { borderBottomWidth: 1, borderBottomColor: '#007AFF', marginVertical: 15, fontSize: 16, paddingVertical: 8, color: '#333' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 25, marginTop: 20 },
   cancelLabel: { color: '#666', fontWeight: '500' },
-  saveBtn: { backgroundColor: '#28a745', minWidth: 100, height: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+  saveBtn: { backgroundColor: '#28a745', minWidth: 110, height: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   saveBtnText: { color: 'white', fontWeight: 'bold' },
   labelSmall: { fontSize: 12, color: '#666' },
   deleteHeader: { borderBottomWidth: 1, borderBottomColor: '#eee', marginBottom: 15, paddingBottom: 10 },

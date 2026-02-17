@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
-  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard 
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -42,7 +43,7 @@ export default function ExpenseCategoriesScreen() {
   const [name, setName] = useState<string>('');
 
   /**
-   * 🛡️ INITIAL LOAD
+   * Initial data load
    */
   useEffect(() => {
     const initialize = async () => {
@@ -64,6 +65,9 @@ export default function ExpenseCategoriesScreen() {
   const canEdit = can('Editar-catalogo-gastos');
   const canDelete = can('Eliminar-catalogo-gastos');
 
+  /**
+   * Fetches categories from server
+   */
   const fetchCategories = async () => {
     setLoading(true);
     try {
@@ -97,6 +101,9 @@ export default function ExpenseCategoriesScreen() {
     setDeleteModalVisible(true);
   };
 
+  /**
+   * Logical deletion with success alert
+   */
   const handleDeactivation = async () => {
     setIsSaving(true);
     try {
@@ -106,8 +113,11 @@ export default function ExpenseCategoriesScreen() {
       });
 
       setDeleteModalVisible(false);
-      Alert.alert("Éxito", "Categoría dada de baja exitosamente.");
-      fetchCategories();
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", "Categoría dada de baja correctamente.");
+        fetchCategories();
+      });
     } catch (error: any) {
       const msg = error.response?.data?.message || "Fallo al dar de baja la categoría.";
       Alert.alert("Error", msg);
@@ -116,9 +126,12 @@ export default function ExpenseCategoriesScreen() {
     }
   };
 
+  /**
+   * Save or Update operation with success alert
+   */
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert("Error", "El nombre es obligatorio.");
+      Alert.alert("Atención", "El nombre de la categoría es obligatorio.");
       return;
     }
     setIsSaving(true);
@@ -127,15 +140,25 @@ export default function ExpenseCategoriesScreen() {
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
       const payload = { name: name.trim() };
 
+      let successMsg = "";
       if (editingCategory) {
         await axios.put(`${ENDPOINT}/${editingCategory.id}`, payload, config);
+        successMsg = "Categoría actualizada correctamente.";
       } else {
         await axios.post(ENDPOINT, payload, config);
+        successMsg = "Categoría registrada exitosamente.";
       }
+
       setModalVisible(false);
-      fetchCategories();
-    } catch (error) {
-      Alert.alert("Error", "Error al guardar la categoría.");
+
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert("Éxito", successMsg);
+        fetchCategories();
+      });
+
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Error al intentar guardar la categoría.";
+      Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
     }
@@ -167,7 +190,7 @@ export default function ExpenseCategoriesScreen() {
           data={filteredCategories}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.itemRow}>
+            <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.itemName}>{item.name}</ThemedText>
                 <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
@@ -203,7 +226,7 @@ export default function ExpenseCategoriesScreen() {
             >
               <View style={styles.modalContent}>
                 <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
-                  <IconSymbol name="plus" size={20} color="#333" /> {editingCategory ? 'Editar' : 'Nueva'} Categoría
+                   {editingCategory ? 'Editar' : 'Nueva'} Categoría
                 </ThemedText>
 
                 <TextInput 

@@ -3,33 +3,27 @@ import { Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
+import { DeviceEventEmitter } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initEcho } from '@/services/echo';
-
-/**
- * AGGRESSIVE LOG FILTERING
- * This overrides console.log to ignore the "Permisos" spam 
- * so we can focus on the Chat/Echo debugging.
- */
-const originalLog = console.log;
-console.log = (...args) => {
-  const message = args.join(' ');
-  if (message.includes('Permisos') || message.includes('🛡️')) {
-    return; // Ignore permission-related logs
-  }
-  originalLog(...args);
-};
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
     const setup = async () => {
-      console.log('🚀 [ROOT] Initializing Echo instance...');
-      const e = await initEcho();
-      if (e) {
-        console.log('✅ [ROOT] Echo connection established');
-      } else {
-        console.log('⚠️ [ROOT] Echo failed to initialize at root');
+      const echo = await initEcho();
+      const userData = await AsyncStorage.getItem('userData');
+      
+      if (echo && userData) {
+        const user = JSON.parse(userData);
+        
+        // Listen to personal notification channel and broadcast to entire app
+        echo.private(`App.Models.User.${user.id}`)
+          .stopListening('.MessageSent')
+          .listen('.MessageSent', (e: any) => {
+            DeviceEventEmitter.emit('new-message-received', e);
+          });
       }
     };
     setup();

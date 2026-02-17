@@ -26,7 +26,7 @@ const usePermission = (user: any) => {
 
     // Eliminar duplicados
     const uniquePermissions = [...new Set(allPermissions)];
-    console.log("🛡️ Permisos Finales en App:", uniquePermissions);
+    
     
     return uniquePermissions;
   }, [user]);
