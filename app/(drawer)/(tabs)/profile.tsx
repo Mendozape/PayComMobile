@@ -9,27 +9,32 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { disconnectEcho } from '@/services/echo'; 
 
 /**
  * ProfileScreen component
- * Allows users to view and update their profile information, including photo and password.
+ * Handles user profile management and session termination.
+ * UI is localized in Spanish for the end user.
  */
 export default function ProfileScreen() {
   const router = useRouter();
+  
+  // User data states
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState(''); 
   
-  // Password states
+  // Password security states
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   
+  // Media and loading states
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Loading for initial fetch
-  const [isUploading, setIsUploading] = useState(false); // Loading for save process
+  const [isLoading, setIsLoading] = useState(true); // Initial data fetch state
+  const [isUploading, setIsUploading] = useState(false); // Save process state
 
   /**
-   * Fetch initial user data from API
+   * Fetch user data from the API on mount
    */
   useEffect(() => {
     const fetchUserData = async () => {
@@ -44,6 +49,7 @@ export default function ProfileScreen() {
         setEmail(response.data.email);
         setPhone(response.data.phone || ''); 
         
+        // Construct and save the profile photo URL if it exists
         if (response.data.profile_photo_path) {
           const photoUrl = `http://192.168.1.16:8000/storage/images/${response.data.profile_photo_path}`;
           setImageUri(photoUrl);
@@ -60,7 +66,7 @@ export default function ProfileScreen() {
   }, []);
 
   /**
-   * Pick an image from the device gallery
+   * Open gallery to pick a profile image
    */
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -73,21 +79,44 @@ export default function ProfileScreen() {
   };
 
   /**
-   * Submit updated data to the backend
+   * Clear session and redirect to the login/landing page
+   */
+  const handleLogout = async () => {
+    Alert.alert(
+      "Cerrar Sesión",
+      "¿Estás seguro de que quieres salir?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Salir", 
+          style: "destructive",
+          onPress: async () => {
+            disconnectEcho();
+            // Clear all local session data
+            await AsyncStorage.multiRemove(['isLoggedIn', 'userToken', 'userProfilePhoto', 'userData']);
+            router.replace('/');
+          }
+        }
+      ]
+    );
+  };
+
+  /**
+   * Submit profile updates to the backend
    */
   const handleSaveProfile = async () => {
     if (!name) {
-      Alert.alert("Error", "El nombre es obligatorio");
+      Alert.alert("Error", "El nombre es obligatorio.");
       return;
     }
 
     if (password.length > 0) {
       if (password.length < 6) {
-        Alert.alert("Error", "La contraseña debe tener al menos 6 caracteres");
+        Alert.alert("Error", "La contraseña debe tener al menos 6 caracteres.");
         return;
       }
       if (password !== passwordConfirmation) {
-        Alert.alert("Error", "Las contraseñas no coinciden");
+        Alert.alert("Error", "Las contraseñas no coinciden.");
         return;
       }
     }
@@ -106,6 +135,7 @@ export default function ProfileScreen() {
         formData.append('password_confirmation', passwordConfirmation);
       }
 
+      // Handle file preparation for upload if uri is local
       if (imageUri && !imageUri.startsWith('http')) {
         const filename = imageUri.split('/').pop() || 'photo.jpg';
         const match = /\.(\w+)$/.exec(filename);
@@ -135,7 +165,7 @@ export default function ProfileScreen() {
 
       Alert.alert(
         "Éxito", 
-        "Perfil actualizado correctamente",
+        "Perfil actualizado correctamente.",
         [{ text: "OK", onPress: () => router.replace('/home') }]
       );
       
@@ -149,7 +179,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* FULL SCREEN LOADING OVERLAY */}
+      {/* GLOBAL LOADING OVERLAY */}
       {(isLoading || isUploading) && (
         <Modal transparent animationType="fade">
           <View style={styles.fullLoaderOverlay}>
@@ -230,12 +260,21 @@ export default function ProfileScreen() {
               />
             </View>
             
+            {/* ACTION BUTTONS */}
             <TouchableOpacity 
               style={styles.saveButton} 
               onPress={handleSaveProfile}
               disabled={isUploading || isLoading}
             >
               <ThemedText style={styles.saveButtonText}>Guardar Cambios</ThemedText>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.logoutButton} 
+              onPress={handleLogout}
+            >
+              <IconSymbol name="rectangle.portrait.and.arrow.right" size={20} color="#ff4444" />
+              <ThemedText style={styles.logoutButtonText}>Cerrar Sesión</ThemedText>
             </TouchableOpacity>
           </View>
         </ThemedView>
@@ -259,4 +298,16 @@ const styles = StyleSheet.create({
   disabledInput: { color: '#999', borderBottomColor: '#eee' }, 
   saveButton: { backgroundColor: '#28a745', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 30 },
   saveButtonText: { color: 'white', fontWeight: 'bold' },
+  logoutButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginTop: 20, 
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#ff4444',
+    borderRadius: 10,
+    gap: 10
+  },
+  logoutButtonText: { color: '#ff4444', fontWeight: 'bold', fontSize: 16 },
 });
