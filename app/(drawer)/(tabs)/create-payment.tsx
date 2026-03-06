@@ -7,12 +7,17 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Import dynamic API_BASE from your centralized configuration
+import { API_BASE } from '../../../src/api/axios';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
-const API_BASE = 'http://192.168.1.16:8000/api';
-
+/**
+ * CreatePaymentScreen Component
+ * Handles the logic for registering property fee payments or waivers (condonaciones).
+ */
 export default function CreatePaymentScreen() {
   const router = useRouter();
   const { addressId } = useLocalSearchParams();
@@ -25,14 +30,13 @@ export default function CreatePaymentScreen() {
 
   // Form State
   const [feeId, setFeeId] = useState('');
-  // Set initial year to current year
   const currentYearInt = new Date().getFullYear();
   const [year, setYear] = useState(currentYearInt.toString());
   const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
   const [waivedMonths, setWaivedMonths] = useState<number[]>([]);
   const [unitAmount, setUnitAmount] = useState(0);
 
-  // Generate year options: Previous, Current, Next
+  // Year options for selection: Previous, Current, Next
   const yearOptions = [
     (currentYearInt - 1).toString(),
     currentYearInt.toString(),
@@ -49,15 +53,20 @@ export default function CreatePaymentScreen() {
     fetchInitialData();
   }, []);
 
-  // Refresh data when year or fee changes
+  // Refresh payment status when year or fee type changes
   useEffect(() => {
     if (feeId && year) fetchPaidMonths();
   }, [feeId, year]);
 
+  /**
+   * Loads the property address details and available fee types from the API.
+   */
   const fetchInitialData = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      // Using dynamic API_BASE for both requests
       const [resAddr, resFees] = await Promise.all([
         axios.get(`${API_BASE}/addresses/${addressId}`, config),
         axios.get(`${API_BASE}/fees`, config)
@@ -65,12 +74,15 @@ export default function CreatePaymentScreen() {
       setAddress(resAddr.data.data);
       setFees(resFees.data.data.filter((f: any) => !f.deleted_at));
     } catch (e) { 
-      Alert.alert("Error", "No se pudo cargar la información del predio."); 
+      Alert.alert("Error", "Could not load property information."); 
     } finally { 
       setLoading(false); 
     }
   };
 
+  /**
+   * Fetches the list of months already paid for the selected year and fee.
+   */
   const fetchPaidMonths = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -85,6 +97,9 @@ export default function CreatePaymentScreen() {
     }
   };
 
+  /**
+   * Calculates the monthly amount based on property type (House/Land) and status.
+   */
   const handleFeeSelect = (fee: any) => {
     setFeeId(fee.id.toString());
     let amount = 0;
@@ -93,6 +108,9 @@ export default function CreatePaymentScreen() {
     setUnitAmount(amount);
   };
 
+  /**
+   * Toggles month selection for either Payment (P) or Waiver (C).
+   */
   const toggleMonth = (month: number, type: 'P' | 'C') => {
     if (type === 'P') {
       if (selectedMonths.includes(month) && !waivedMonths.includes(month)) {
@@ -112,8 +130,11 @@ export default function CreatePaymentScreen() {
     }
   };
 
+  /**
+   * Sends the payment/waiver data to the server.
+   */
   const handleSave = async () => {
-    if (selectedMonths.length === 0) return Alert.alert("Aviso", "Seleccione al menos un mes.");
+    if (selectedMonths.length === 0) return Alert.alert("Aviso", "Please select at least one month.");
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -126,16 +147,16 @@ export default function CreatePaymentScreen() {
         waived_months: waivedMonths
       }, { headers: { Authorization: `Bearer ${token}` } });
       
-      Alert.alert("Éxito", "Pago registrado correctamente.");
+      Alert.alert("Éxito", "Payment registered successfully.");
       router.back();
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "Fallo al registrar.");
+      Alert.alert("Error", e.response?.data?.message || "Registration failed.");
     } finally { 
       setIsSaving(false); 
     }
   };
 
-  if (loading) return <ActivityIndicator size="large" style={{flex:1}} />;
+  if (loading) return <ActivityIndicator size="large" style={{flex:1}} color="#28a745" />;
 
   return (
     <ThemedView style={styles.container}>
@@ -172,6 +193,7 @@ export default function CreatePaymentScreen() {
               ))}
             </View>
 
+            {/* Legend for Month Actions */}
             <View style={styles.legendContainer}>
               <View style={styles.legendItem}>
                 <View style={[styles.miniBtn, styles.payActive, {width: 18, height: 18}]}><ThemedText style={styles.legendText}>P</ThemedText></View>

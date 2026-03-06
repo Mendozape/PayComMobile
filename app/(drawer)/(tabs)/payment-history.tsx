@@ -11,8 +11,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
-const API_BASE = 'http://192.168.1.16:8000/api';
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios'; 
 
+/**
+ * PaymentHistoryScreen Component
+ * Displays the record of all payments made for a specific property.
+ * Allows administrative users to void (cancel) payments with a reason.
+ */
 export default function PaymentHistoryScreen() {
   const { addressId } = useLocalSearchParams();
   const [payments, setPayments] = useState<any[]>([]);
@@ -23,8 +29,12 @@ export default function PaymentHistoryScreen() {
   const [reason, setReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Fetch payment history on component mount
   useEffect(() => { fetchHistory(); }, []);
 
+  /**
+   * Retrieves the full history from the API using dynamic base URL.
+   */
   const fetchHistory = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -39,18 +49,25 @@ export default function PaymentHistoryScreen() {
     }
   };
 
+  /**
+   * Logic to void a specific payment record.
+   * Requires a justification reason of at least 5 characters.
+   */
   const handleCancel = async () => {
-    if (reason.length < 5) return Alert.alert("Error", "El motivo debe tener al menos 5 caracteres.");
+    if (reason.length < 5) {
+      return Alert.alert("Error", "El motivo debe tener al menos 5 caracteres.");
+    }
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      // POST request to void the specific payment
+      // POST request to the dynamic cancellation endpoint
       await axios.post(`${API_BASE}/address_payments/cancel/${selectedPayment.id}`, { reason }, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
       Alert.alert("Éxito", "El pago ha sido anulado.");
       setCancelModal(false);
-      fetchHistory(); // Refresh list after voiding
+      fetchHistory(); // Refresh the list to show updated status
     } catch (e) { 
       Alert.alert("Error", "No se pudo anular el pago."); 
     } finally { 
@@ -58,7 +75,7 @@ export default function PaymentHistoryScreen() {
     }
   };
 
-  if (loading) return <ActivityIndicator style={{flex:1}} />;
+  if (loading) return <ActivityIndicator style={{flex:1}} color="#28a745" />;
 
   return (
     <ThemedView style={styles.container}>
@@ -84,7 +101,7 @@ export default function PaymentHistoryScreen() {
                   {item.deleted_at ? 'Anulado' : item.status}
                 </ThemedText>
               </View>
-              {/* Void button - only shown if payment is not already deleted */}
+              {/* Void button - only enabled if the payment is currently active */}
               {!item.deleted_at && (
                 <TouchableOpacity onPress={() => { setSelectedPayment(item); setReason(''); setCancelModal(true); }}>
                   <IconSymbol name="ban" size={20} color="#dc3545" style={{marginTop: 8}} />
@@ -95,7 +112,7 @@ export default function PaymentHistoryScreen() {
         )}
       />
 
-      {/* Void Payment Modal */}
+      {/* Void Payment Modal - Request justification from user */}
       <Modal visible={cancelModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -106,13 +123,14 @@ export default function PaymentHistoryScreen() {
               multiline 
               onChangeText={setReason} 
               value={reason}
+              placeholderTextColor="#999"
             />
             <View style={styles.modalButtons}>
               <TouchableOpacity onPress={() => setCancelModal(false)}>
                 <ThemedText>Cerrar</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity style={styles.confirmBtn} onPress={handleCancel} disabled={isSaving}>
-                {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{color:'white'}}>Confirmar</ThemedText>}
+                {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{color:'white', fontWeight:'bold'}}>Confirmar</ThemedText>}
               </TouchableOpacity>
             </View>
           </View>
@@ -124,7 +142,7 @@ export default function PaymentHistoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
-  paymentCard: { backgroundColor: 'white', padding: 15, borderRadius: 10, marginBottom: 10, flexDirection: 'row', elevation: 2 },
+  paymentCard: { backgroundColor: 'white', padding: 15, borderRadius: 10, marginBottom: 10, flexDirection: 'row', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   feeName: { fontWeight: 'bold', fontSize: 16 },
   period: { color: '#666' },
   date: { fontSize: 12, color: '#aaa' },
@@ -133,7 +151,7 @@ const styles = StyleSheet.create({
   badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '85%' },
-  input: { borderBottomWidth: 1, borderBottomColor: '#ddd', height: 80, marginVertical: 15, textAlignVertical: 'top' },
+  input: { borderBottomWidth: 1, borderBottomColor: '#ddd', height: 80, marginVertical: 15, textAlignVertical: 'top', color: '#333' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20, alignItems: 'center' },
   confirmBtn: { backgroundColor: '#dc3545', padding: 10, borderRadius: 8, minWidth: 80, alignItems: 'center' }
 });

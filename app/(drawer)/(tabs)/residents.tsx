@@ -18,6 +18,9 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios'; 
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -38,8 +41,9 @@ interface User {
   roles?: Role[];
 }
 
-const ENDPOINT = 'http://192.168.1.16:8000/api/usuarios';
-const ROLES_ENDPOINT = 'http://192.168.1.16:8000/api/roles';
+// Dynamic endpoints constructed from API_BASE
+const ENDPOINT = `${API_BASE}/usuarios`;
+const ROLES_ENDPOINT = `${API_BASE}/roles`;
 
 export default function ResidentsScreen() {
   const [users, setUsers] = useState<User[]>([]);
@@ -64,16 +68,17 @@ export default function ResidentsScreen() {
   });
 
   /**
-   * Initial setup: load permissions and data
+   * Initial setup: load permissions and data using dynamic API_BASE
    */
   useEffect(() => {
     const initialize = async () => {
       try {
         const jsonValue = await AsyncStorage.getItem('userData');
         if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
+        // Concurrent fetch from dynamic endpoints
         await Promise.all([fetchUsers(), fetchRoles()]);
       } catch (e) {
-        console.error(e);
+        console.error("Initialization Error:", e);
       } finally {
         setIsReady(true);
       }
@@ -87,7 +92,7 @@ export default function ResidentsScreen() {
   const canDelete = can('Eliminar-usuarios');
 
   /**
-   * Data fetching from API
+   * Fetches users list from dynamic API endpoint
    */
   const fetchUsers = async () => {
     setLoading(true);
@@ -99,12 +104,15 @@ export default function ResidentsScreen() {
       const data = response.data.data || response.data;
       setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error(error);
+      console.error("Fetch Users Error:", error);
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Fetches available roles from dynamic API endpoint
+   */
   const fetchRoles = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -113,21 +121,15 @@ export default function ResidentsScreen() {
       });
       setRoles(response.data);
     } catch (error) {
-      console.error(error);
+      console.error("Fetch Roles Error:", error);
     }
   };
 
-  /**
-   * Search filter logic
-   */
   const filteredUsers = users.filter((u) =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  /**
-   * Form logic
-   */
   const openModal = (user: User | null = null) => {
     setEditingUser(user);
 
@@ -152,12 +154,11 @@ export default function ResidentsScreen() {
         role: ''
       });
     }
-
     setModalVisible(true);
   };
 
   /**
-   * Save operation with success alerts in Spanish
+   * Logic for Save/Update operations using dynamic endpoints.
    */
   const handleSave = async () => {
     if (!formData.name || !formData.email || (!editingUser && !formData.password) || !formData.role) {
@@ -171,7 +172,6 @@ export default function ResidentsScreen() {
     }
 
     setIsSaving(true);
-
     try {
       const token = await AsyncStorage.getItem('userToken');
       const config = {
@@ -193,18 +193,18 @@ export default function ResidentsScreen() {
       };
 
       let successMsg = '';
-
       if (editingUser) {
+        // Dynamic PUT
         await axios.put(`${ENDPOINT}/${editingUser.id}`, payload, config);
         successMsg = 'Residente actualizado exitosamente.';
       } else {
+        // Dynamic POST
         await axios.post(ENDPOINT, payload, config);
         successMsg = 'Residente creado exitosamente.';
       }
 
       setModalVisible(false);
 
-      // Ensure modal is closed before showing the alert
       InteractionManager.runAfterInteractions(() => {
         Alert.alert('Éxito', successMsg);
         fetchUsers();
@@ -218,7 +218,7 @@ export default function ResidentsScreen() {
   };
 
   /**
-   * Deactivation / Reactivation logic
+   * Handles deactivation or reactivation using dynamic endpoints.
    */
   const toggleStatus = (user: User) => {
     const isDeactivating = !user.deleted_at;
@@ -236,13 +236,14 @@ export default function ResidentsScreen() {
               const config = { headers: { Authorization: `Bearer ${token}` } };
 
               if (isDeactivating) {
+                // Dynamic DELETE
                 await axios.delete(`${ENDPOINT}/${user.id}`, config);
                 Alert.alert('Éxito', 'Residente dado de baja.');
               } else {
+                // Dynamic POST restore
                 await axios.post(`${ENDPOINT}/restore/${user.id}`, {}, config);
                 Alert.alert('Éxito', 'Residente reactivado.');
               }
-
               fetchUsers();
             } catch {
               Alert.alert('Error', 'No se pudo cambiar el estado del usuario.');
@@ -486,104 +487,30 @@ export default function ResidentsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   headerActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  searchInput: {
-    flex: 1,
-    backgroundColor: '#f2f2f2',
-    borderRadius: 10,
-    padding: 12,
-    color: '#333'
-  },
-  addButton: {
-    backgroundColor: '#28a745',
-    padding: 12,
-    borderRadius: 10,
-    justifyContent: 'center'
-  },
-  userItem: {
-    flexDirection: 'row',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    alignItems: 'center'
-  },
+  searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12, color: '#333' },
+  addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, justifyContent: 'center' },
+  userItem: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
   inactiveItem: { opacity: 0.6 },
   userName: { fontSize: 16, fontWeight: 'bold' },
   userSub: { fontSize: 13, color: '#666' },
   actionRow: { flexDirection: 'row', gap: 20, marginLeft: 10 },
   badgeRow: { flexDirection: 'row', marginTop: 5 },
-  badge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10
-  },
+  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    width: '100%',
-    maxHeight: '90%',
-    overflow: 'hidden'
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: 'white', borderRadius: 20, width: '100%', maxHeight: '90%', overflow: 'hidden' },
   modalBody: { paddingHorizontal: 25, paddingTop: 25 },
-  labelSmall: {
-    fontSize: 11,
-    color: '#888',
-    fontWeight: 'bold',
-    textTransform: 'uppercase'
-  },
-  modalInput: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#28a745',
-    marginBottom: 20,
-    fontSize: 15,
-    paddingVertical: 5,
-    color: '#333'
-  },
+  labelSmall: { fontSize: 11, color: '#888', fontWeight: 'bold', textTransform: 'uppercase' },
+  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 20, fontSize: 15, paddingVertical: 5, color: '#333' },
   textArea: { minHeight: 60, textAlignVertical: 'top' },
   passwordSection: { marginTop: 10, backgroundColor: '#fdfdfd', padding: 10, borderRadius: 10, borderStyle: 'dashed', borderWidth: 1, borderColor: '#eee' },
-  rolePickerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginVertical: 10,
-    marginBottom: 20
-  },
-  roleChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#007AFF'
-  },
+  rolePickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10, marginBottom: 20 },
+  roleChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, borderWidth: 1, borderColor: '#007AFF' },
   roleChipActive: { backgroundColor: '#007AFF' },
   roleChipText: { fontSize: 12, color: '#007AFF' },
-  modalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: 20,
-    padding: 25,
-    backgroundColor: '#f9f9f9',
-    borderTopWidth: 1,
-    borderTopColor: '#eee'
-  },
+  modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 20, padding: 25, backgroundColor: '#f9f9f9', borderTopWidth: 1, borderTopColor: '#eee' },
   cancelBtn: { padding: 10 },
   cancelLabel: { color: '#666', fontWeight: 'bold' },
-  saveBtn: {
-    backgroundColor: '#28a745',
-    minWidth: 100,
-    height: 45,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10
-  },
+  saveBtn: { backgroundColor: '#28a745', minWidth: 100, height: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   saveBtnText: { color: 'white', fontWeight: 'bold' }
 });

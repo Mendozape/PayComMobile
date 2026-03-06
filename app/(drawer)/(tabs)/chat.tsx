@@ -1,17 +1,23 @@
-// app/(drawer)/(tabs)/chat/contacts.tsx
-
 import React, { useState, useRef } from 'react';
 import { StyleSheet, FlatList, TouchableOpacity, View, TextInput, ActivityIndicator, RefreshControl, DeviceEventEmitter } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect } from 'expo-router';
+
+// Corrected relative path to reach src/api/axios from app/(drawer)/(tabs)/chat/
+import { API_BASE } from '../../../src/api/axios'; 
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
+/**
+ * ChatContactsScreen Component
+ * Displays a list of available contacts and their unread message counts.
+ */
 export default function ChatContactsScreen() {
   const router = useRouter();
-  const [contacts, setContacts] = useState([]);
+  const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -20,7 +26,8 @@ export default function ChatContactsScreen() {
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
-   * Fetches contact list with unread message counts from server.
+   * Fetches contact list with unread message counts from the server.
+   * Uses dynamic API_BASE for environment compatibility.
    */
   const fetchContacts = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -29,7 +36,8 @@ export default function ChatContactsScreen() {
       const token = await AsyncStorage.getItem('userToken');
       if (!token) return;
 
-      const res = await axios.get(`http://192.168.1.16:8000/api/chat/contacts`, {
+      // GET request using centralized dynamic URL
+      const res = await axios.get(`${API_BASE}/chat/contacts`, {
         headers: { 
           Authorization: `Bearer ${token}`,
           Accept: 'application/json' 
@@ -40,32 +48,32 @@ export default function ChatContactsScreen() {
       setContacts(usersData);
       
     } catch (e) {
-      // Fetch failed silently
+      console.error("Fetch Contacts Error:", e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  /**
+   * Screen focus effect to refresh data and handle real-time message events.
+   */
   useFocusEffect(
     React.useCallback(() => {
       isFocusedRef.current = true;
       
-      // Fetch fresh contact list when screen focuses
+      // Refresh contact list when screen comes into focus
       fetchContacts(false);
       
-      // Listen for new messages to update contact badges
+      // Listen for global 'new-message-received' events to update badges
       const msgListener = DeviceEventEmitter.addListener('new-message-received', (e) => {
         if (!isFocusedRef.current) return;
         
-        const senderId = e?.message?.sender_id || e?.sender_id;
-        
-        // Clear any pending fetch timeout
+        // Debounce contact list refresh to avoid multiple API calls
         if (fetchTimeoutRef.current) {
           clearTimeout(fetchTimeoutRef.current);
         }
         
-        // Debounce contact list refresh
         fetchTimeoutRef.current = setTimeout(() => {
           fetchContacts(true);
         }, 1000);
@@ -83,12 +91,14 @@ export default function ChatContactsScreen() {
     }, [])
   );
 
+  // Filter contacts based on search input
   const filtered = contacts.filter(c => 
     c.name?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <ThemedView style={{ flex: 1 }}>
+      {/* Search Input Section */}
       <View style={styles.searchBox}>
         <IconSymbol name="magnifyingglass" size={20} color="#666" />
         <TextInput
@@ -101,7 +111,7 @@ export default function ChatContactsScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" style={{ marginTop: 50 }} />
+        <ActivityIndicator size="large" style={{ marginTop: 50 }} color="#007bff" />
       ) : (
         <FlatList
           data={filtered}
@@ -113,6 +123,7 @@ export default function ChatContactsScreen() {
                 setRefreshing(true);
                 fetchContacts(false);
               }}
+              tintColor="#007bff"
             />
           }
           renderItem={({ item }) => (
@@ -125,17 +136,19 @@ export default function ChatContactsScreen() {
                 })
               }
             >
+              {/* Profile Avatar with First Letter */}
               <View style={styles.avatar}>
                 <ThemedText style={styles.avatarText}>
                   {item.name?.charAt(0)}
                 </ThemedText>
               </View>
+              
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.name}>{item.name}</ThemedText>
                 <ThemedText style={styles.email}>{item.email}</ThemedText>
               </View>
               
-              {/* Unread message badge */}
+              {/* Unread Message Badge Indicator */}
               {Number(item.unread_count) > 0 && (
                 <View style={styles.badge}>
                   <ThemedText style={styles.badgeText}>

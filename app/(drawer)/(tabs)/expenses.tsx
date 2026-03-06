@@ -8,17 +8,21 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import usePermission from '@/hooks/usePermission';
 
-const ENDPOINT = 'http://192.168.1.16:8000/api/expenses';
-const CAT_ENDPOINT = 'http://192.168.1.16:8000/api/expense_categories';
+// Construct dynamic endpoints using API_BASE
+const ENDPOINT = `${API_BASE}/expenses`;
+const CAT_ENDPOINT = `${API_BASE}/expense_categories`;
 
 /**
  * ExpensesScreen Component
- * Manages the list of expenses, allowing creation, editing, and deletion with justification.
+ * Manages the list of expenses, allowing creation, editing, and soft deletion with justification.
  */
 export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -42,16 +46,17 @@ export default function ExpensesScreen() {
   const [deactivationReason, setDeactivationReason] = useState('');
 
   /**
-   * Initial data load: profile, expenses, and categories.
+   * Initial data load on mount.
    */
   useEffect(() => {
     const initialize = async () => {
       try {
         const jsonValue = await AsyncStorage.getItem('userData');
         if (jsonValue) setUser(JSON.parse(jsonValue));
+        // Concurrent fetch from dynamic endpoints
         await Promise.all([fetchExpenses(), fetchCategories()]);
       } catch (e) {
-        console.error(e);
+        console.error("Initialization Error:", e);
       } finally {
         setIsReady(true);
       }
@@ -62,7 +67,7 @@ export default function ExpensesScreen() {
   const { can } = usePermission(user);
 
   /**
-   * Fetches expenses list from API.
+   * Fetches the full list of expenses using dynamic API_BASE.
    */
   const fetchExpenses = async () => {
     setLoading(true);
@@ -73,13 +78,15 @@ export default function ExpensesScreen() {
       });
       const data = response.data.data || response.data;
       setExpenses(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Fetch Expenses Error:", e);
     } finally {
       setLoading(false);
     }
   };
 
   /**
-   * Fetches active expense categories.
+   * Fetches active expense categories to populate the picker.
    */
   const fetchCategories = async () => {
     try {
@@ -89,11 +96,11 @@ export default function ExpensesScreen() {
       });
       const data = response.data.data || response.data;
       setCategories(data.filter((c: any) => !c.deleted_at));
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Fetch Categories Error:", e); }
   };
 
   /**
-   * Prepares and opens the form modal.
+   * Opens the form modal for adding or editing an expense.
    */
   const openForm = (item: any = null) => {
     setEditingId(item?.id || null);
@@ -106,7 +113,7 @@ export default function ExpensesScreen() {
   };
 
   /**
-   * Opens the confirmation modal for deletion.
+   * Prepares the deletion confirmation modal.
    */
   const openDelete = (item: any) => {
     setExpenseToDelete(item);
@@ -115,7 +122,7 @@ export default function ExpensesScreen() {
   };
 
   /**
-   * Logic for Save/Update operations.
+   * Logic for Save/Update operations via dynamic API requests.
    */
   const handleSave = async () => {
     if (!categoryId || !amount || !expenseDate) {
@@ -145,14 +152,14 @@ export default function ExpensesScreen() {
       });
 
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "Fallo al guardar el registro.");
+      Alert.alert("Error", e.response?.data?.message || "Registration failed.");
     } finally {
       setIsSaving(false);
     }
   };
 
   /**
-   * Logic for soft deletion with reason.
+   * Logic for soft deleting a record with a required reason.
    */
   const handleDelete = async () => {
     if (deactivationReason.trim().length < 10) {
@@ -175,7 +182,7 @@ export default function ExpensesScreen() {
       });
 
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "No se pudo realizar la eliminación.");
+      Alert.alert("Error", e.response?.data?.message || "Could not complete deletion.");
     } finally {
       setIsSaving(false);
     }
@@ -232,7 +239,6 @@ export default function ExpensesScreen() {
         )}
       />
 
-      {/* FORM MODAL */}
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView 
@@ -291,7 +297,6 @@ export default function ExpensesScreen() {
         </View>
       </Modal>
 
-      {/* DELETION MODAL */}
       <Modal visible={deleteModalVisible} transparent animationType="fade" onRequestClose={() => setDeleteModalVisible(false)}>
         <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>

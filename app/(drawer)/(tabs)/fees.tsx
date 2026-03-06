@@ -8,6 +8,9 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -26,7 +29,8 @@ interface Fee {
   deleted_at: string | null;
 }
 
-const ENDPOINT = 'http://192.168.1.16:8000/api/fees';
+// Construct the endpoint using the dynamic API_BASE
+const ENDPOINT = `${API_BASE}/fees`;
 
 export default function FeesScreen() {
   const [fees, setFees] = useState<Fee[]>([]);
@@ -52,13 +56,14 @@ export default function FeesScreen() {
   const [deactivationReason, setDeactivationReason] = useState<string>(''); 
 
   /**
-   * Initial data load: User profile and fees catalog
+   * Initial data load: User profile and fees catalog using dynamic endpoints.
    */
   useEffect(() => {
     const initialize = async () => {
       try {
         const jsonValue = await AsyncStorage.getItem('userData');
         if (jsonValue) setUser(JSON.parse(jsonValue));
+        // Perform initial fetch from dynamic endpoint
         await fetchFees();
       } catch (e) {
         console.error("Initialization Error:", e);
@@ -75,7 +80,7 @@ export default function FeesScreen() {
   const canDeactivate = can('Eliminar-cuotas');
 
   /**
-   * Data fetching logic
+   * Data fetching logic using the dynamic API_BASE.
    */
   const fetchFees = async () => {
     setLoading(true);
@@ -116,7 +121,7 @@ export default function FeesScreen() {
   };
 
   /**
-   * Handles logical deletion with success alert
+   * Handles logical deletion (soft delete) with a required reason.
    */
   const handleDeactivation = async () => {
     if (!deactivationReason.trim()) {
@@ -127,6 +132,7 @@ export default function FeesScreen() {
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
+      // Dynamic DELETE request
       await axios.delete(`${ENDPOINT}/${feeToDelete?.id}`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { reason: deactivationReason }
@@ -139,7 +145,7 @@ export default function FeesScreen() {
         fetchFees();
       });
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Fallo al intentar dar de baja la cuota.";
+      const msg = error.response?.data?.message || "Failed to deactivate fee.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -147,7 +153,7 @@ export default function FeesScreen() {
   };
 
   /**
-   * Handles Save/Update operation with success alert
+   * Handles both POST (Create) and PUT (Update) operations.
    */
   const handleSave = async () => {
     if (!feeName.trim() || !amountOccupied || !amountEmpty || !amountLand) {
@@ -168,9 +174,11 @@ export default function FeesScreen() {
 
       let successMsg = "";
       if (editingFee) {
+        // Dynamic PUT request
         await axios.put(`${ENDPOINT}/${editingFee.id}`, payload, config);
         successMsg = "Cuota actualizada correctamente.";
       } else {
+        // Dynamic POST request
         await axios.post(ENDPOINT, payload, config);
         successMsg = "Cuota registrada exitosamente.";
       }
@@ -183,7 +191,7 @@ export default function FeesScreen() {
       });
 
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Hubo un error al guardar la cuota.";
+      const msg = error.response?.data?.message || "Error while saving fee record.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -326,7 +334,7 @@ export default function FeesScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: DEACTIVATION --- */}
+      {/* --- MODAL: DEACTIVATION (Soft Delete) --- */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>

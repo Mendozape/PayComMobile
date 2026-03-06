@@ -16,6 +16,9 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios'; 
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -29,7 +32,8 @@ interface Permission {
   name: string;
 }
 
-const ENDPOINT = 'http://192.168.1.16:8000/api/permisos';
+// Construct dynamic endpoint
+const ENDPOINT = `${API_BASE}/permisos`;
 
 export default function PermissionsScreen() {
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -48,6 +52,9 @@ export default function PermissionsScreen() {
   // Form state
   const [permissionName, setPermissionName] = useState('');
 
+  /**
+   * Initial data load on mount.
+   */
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -68,6 +75,9 @@ export default function PermissionsScreen() {
   const canEdit = can('Editar-permisos');
   const canDelete = can('Eliminar-permisos');
 
+  /**
+   * Fetches the permissions list from the dynamic endpoint.
+   */
   const fetchPermissions = async () => {
     setLoading(true);
     try {
@@ -94,6 +104,9 @@ export default function PermissionsScreen() {
     setModalVisible(true);
   };
 
+  /**
+   * Logic for Save/Update operations using dynamic endpoint.
+   */
   const handleSave = async () => {
     if (!permissionName.trim()) {
       Alert.alert("Error", "El nombre del permiso es obligatorio.");
@@ -106,9 +119,11 @@ export default function PermissionsScreen() {
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
       
       if (editingPermission) {
+        // Dynamic PUT
         await axios.put(`${ENDPOINT}/${editingPermission.id}`, { name: permissionName.trim() }, config);
         Alert.alert("Éxito", "Permiso actualizado correctamente.");
       } else {
+        // Dynamic POST
         await axios.post(ENDPOINT, { name: permissionName.trim() }, config);
         Alert.alert("Éxito", "Permiso creado correctamente.");
       }
@@ -123,10 +138,14 @@ export default function PermissionsScreen() {
     }
   };
 
+  /**
+   * Logical deletion logic using dynamic endpoint.
+   */
   const confirmDelete = async () => {
     if (!permToDelete) return;
     try {
       const token = await AsyncStorage.getItem('userToken');
+      // Dynamic DELETE
       await axios.delete(`${ENDPOINT}/${permToDelete}`, {
         headers: { Authorization: `Bearer ${token}` }
       });

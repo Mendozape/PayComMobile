@@ -1,15 +1,21 @@
-// app/(drawer)/(tabs)/chat/[id].tsx
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DeviceEventEmitter, StyleSheet, View, TextInput, FlatList, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, Stack, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Corrected relative path to reach src/api/axios from app/(drawer)/(tabs)/chat/
+import { API_BASE } from '../../../../src/api/axios'; 
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getEcho, initEcho } from '@/services/echo';
 
+/**
+ * ChatDetailScreen Component
+ * Provides a real-time messaging interface between users.
+ */
 export default function ChatDetailScreen() {
   const { id, name } = useLocalSearchParams();
   const [messages, setMessages] = useState([]);
@@ -25,13 +31,13 @@ export default function ChatDetailScreen() {
 
   /**
    * Fetches messages and marks them as read on focus.
-   * Critical: This ensures messages are always marked as read when user enters chat.
+   * Uses DeviceEventEmitter to inform the app that this specific chat is active.
    */
   useFocusEffect(
     React.useCallback(() => {
       DeviceEventEmitter.emit('chat-active', true);
       
-      // Fetch fresh messages every time screen focuses
+      // Fetch fresh messages every time screen focuses using dynamic API_BASE
       fetchMessages();
       
       return () => {
@@ -40,6 +46,9 @@ export default function ChatDetailScreen() {
     }, [id])
   );
 
+  /**
+   * Sets up real-time listeners using Laravel Echo and dynamic channels.
+   */
   useEffect(() => {
     let msgSub: any;
 
@@ -79,13 +88,13 @@ export default function ChatDetailScreen() {
           echoSetupDone.current = true;
         }
 
-        // Listen for new incoming messages
+        // Listen for new incoming messages emitted by the echo service
         msgSub = DeviceEventEmitter.addListener('new-message-received', (e: any) => {
           const senderId = e.message?.sender_id || e.sender_id;
 
           if (Number(senderId) === Number(id)) {
             setMessages(prev => {
-              // Prevent duplicates
+              // Prevent duplicates if the message was already added manually
               if (prev.find(m => m.id === e.message.id)) return prev;
               return [e.message, ...prev];
             });
@@ -110,18 +119,18 @@ export default function ChatDetailScreen() {
   }, [id]);
 
   /**
-   * Handles text input changes and sends typing indicator.
+   * Handles text input changes and sends typing indicator to backend via dynamic API_BASE.
    */
   const handleTextChange = (text: string) => {
     setMessage(text);
 
     const now = Date.now();
-    // Throttle typing indicator to every 2.5 seconds
+    // Throttle typing indicator to every 2.5 seconds to save server resources
     if (now - lastTypingSent.current > 2500 && text.length > 0) {
       lastTypingSent.current = now;
 
       AsyncStorage.getItem('userToken').then(token => {
-        axios.post('http://192.168.1.16:8000/api/chat/typing', 
+        axios.post(`${API_BASE}/chat/typing`, 
           { receiver_id: id }, 
           { headers: { Authorization: `Bearer ${token}` } }
         ).catch(() => {});
@@ -131,14 +140,13 @@ export default function ChatDetailScreen() {
 
   /**
    * Fetches message history and automatically marks messages as read.
-   * The backend endpoint handles the read status update.
    */
   const fetchMessages = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       
-      // This endpoint fetches messages AND marks them as read
-      const res = await axios.get(`http://192.168.1.16:8000/api/chat/messages/${id}`, {
+      // Use dynamic dynamic URL to fetch conversation history
+      const res = await axios.get(`${API_BASE}/chat/messages/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -147,11 +155,12 @@ export default function ChatDetailScreen() {
       
     } catch (e) {
       setLoading(false);
+      console.error("Fetch Messages Error:", e);
     }
   };
 
   /**
-   * Sends a new message to the chat.
+   * Sends a new message to the API using dynamic API_BASE.
    */
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -162,21 +171,22 @@ export default function ChatDetailScreen() {
     const token = await AsyncStorage.getItem('userToken');
 
     try {
-      const res = await axios.post('http://192.168.1.16:8000/api/chat/send', 
+      const res = await axios.post(`${API_BASE}/chat/send`, 
         { receiver_id: id, content }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      // Append own message immediately for better UX
       setMessages(prev => [res.data.message, ...prev]);
     } catch (e) {
-      // Send failed silently
+      console.error("Send Message Error:", e);
     }
   };
 
   if (loading) {
     return (
       <ThemedView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#28a745" />
         <ThemedText style={{ marginTop: 10 }}>Cargando mensajes...</ThemedText>
       </ThemedView>
     );
@@ -206,7 +216,7 @@ export default function ChatDetailScreen() {
                   <ThemedText style={styles.time}>
                     {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </ThemedText>
-                  {/* Read receipt (single/double check) */}
+                  {/* Read receipt checkmarks */}
                   {isMe && <ThemedText style={styles.check}>{m.read_at ? ' ✓✓' : ' ✓'}</ThemedText>}
                 </View>
               </View>
@@ -214,14 +224,14 @@ export default function ChatDetailScreen() {
           }}
         />
 
-        {/* Typing indicator */}
+        {/* Real-time typing indicator */}
         {isOtherTyping && (
           <ThemedText style={styles.typingIndicator}>
             {name} está escribiendo...
           </ThemedText>
         )}
 
-        {/* Message input area */}
+        {/* Chat input footer */}
         <View style={styles.inputArea}>
           <TextInput
             style={styles.input}
@@ -251,6 +261,6 @@ const styles = StyleSheet.create({
   check: { fontSize: 13, marginLeft: 4, fontWeight: 'bold', color: '#6c757d' },
   typingIndicator: { padding: 10, fontSize: 12, fontStyle: 'italic', color: '#666' },
   inputArea: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#dee2e6' },
-  input: { flex: 1, backgroundColor: '#f8f9fa', borderRadius: 22, paddingHorizontal: 16, minHeight: 40, maxHeight: 100, fontSize: 16 },
+  input: { flex: 1, backgroundColor: '#f8f9fa', borderRadius: 22, paddingHorizontal: 16, minHeight: 40, maxHeight: 100, fontSize: 16, color: '#333' },
   send: { backgroundColor: '#28a745', width: 44, height: 44, borderRadius: 22, marginLeft: 10, justifyContent: 'center', alignItems: 'center' }
 });

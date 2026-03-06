@@ -7,10 +7,11 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons'; 
 
+// Import dynamic API_BASE from your centralized configuration
+import { API_BASE } from '../../../src/api/axios'; 
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-
-const API_BASE = 'http://192.168.1.16:8000/api';
 
 /**
  * ReportsScreen Component
@@ -42,10 +43,14 @@ export default function ReportsScreen() {
     fetchFees();
   }, []);
 
+  // Automatically refresh report when filters change
   useEffect(() => {
     if (paymentType) fetchReport();
   }, [paymentType, ingresoYear]);
 
+  /**
+   * Fetches available fee types from the server using dynamic API_BASE.
+   */
   const fetchFees = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -56,6 +61,9 @@ export default function ReportsScreen() {
     } catch (e) { console.error("Error fetching fees:", e); }
   };
 
+  /**
+   * Retrieves the debtors report from the API based on selected filters.
+   */
   const fetchReport = async () => {
     setLoading(true);
     try {
@@ -67,7 +75,7 @@ export default function ReportsScreen() {
       const cleanData = Array.isArray(res.data.data) ? res.data.data : [];
       setData(cleanData);
     } catch (e) {
-      Alert.alert("Error", "No se pudo obtener el reporte");
+      Alert.alert("Error", "Could not retrieve report data.");
     } finally { setLoading(false); }
   };
 
@@ -97,6 +105,9 @@ export default function ReportsScreen() {
     </View>
   );
 
+  /**
+   * Renders each individual property card with its payment grid.
+   */
   const renderDebtItem = (item: any, index: number) => {
     const overdueCount = getOverdueTotal(item);
     const hasDebt = overdueCount > 0;
@@ -121,10 +132,9 @@ export default function ReportsScreen() {
             const isWaived = item[`month_${m}_status`] === 'Condonado';
             const isTrulyOverdue = (ingresoYear < currentYear) || (ingresoYear === currentYear && m < currentMonthNum);
 
-            // Conditional Styles for the Month Box
             let boxStyle = styles.statusBox;
             let iconColor = "#dc3545"; // Default red
-            let iconName = "times-circle";
+            let iconName: any = "times-circle";
 
             if (isPaid) {
               if (isWaived) {
@@ -137,9 +147,8 @@ export default function ReportsScreen() {
                 iconName = "check-circle";
               }
             } else if (isTrulyOverdue) {
-              // Solid red background for overdue months
               boxStyle = [styles.statusBox, styles.boxUnpaidSolid];
-              iconColor = "white"; // White 'X'
+              iconColor = "white"; // White 'X' for high visibility
               iconName = "times-circle";
             } else {
               boxStyle = [styles.statusBox, styles.boxFuture];
@@ -193,6 +202,7 @@ export default function ReportsScreen() {
         )}
       </ScrollView>
 
+      {/* Generic Modal for all selectors */}
       <Modal visible={!!activeModal} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setActiveModal(null)} activeOpacity={1}>
           <View style={styles.modalContent}>
@@ -231,7 +241,6 @@ const styles = StyleSheet.create({
   selectorLabel: { fontSize: 10, fontWeight: 'bold', color: '#999', marginBottom: 4, textTransform: 'uppercase' },
   selectorBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
   selectorText: { fontSize: 13 },
-  
   card: { backgroundColor: '#fff', borderRadius: 15, padding: 15, marginBottom: 15, elevation: 2, borderWidth: 1, borderColor: '#eee' },
   cardOverdue: { backgroundColor: '#fff0f0', borderColor: '#ffc1c1' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
@@ -240,16 +249,14 @@ const styles = StyleSheet.create({
   overdueBadge: { backgroundColor: '#f8f9fa', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   overdueBadgeActive: { backgroundColor: '#dc3545' },
   overdueText: { color: '#dc3545', fontWeight: 'bold', fontSize: 11 },
-  
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   statusBox: { width: '15.5%', aspectRatio: 0.85, justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderRadius: 8, borderWidth: 1, paddingTop: 4 },
   boxPaid: { backgroundColor: '#f0fff4', borderColor: '#dcfce7' },
-  boxUnpaidSolid: { backgroundColor: '#dc3545', borderColor: '#b22222' }, // Solid Red Box
+  boxUnpaidSolid: { backgroundColor: '#dc3545', borderColor: '#b22222' },
   boxWaived: { backgroundColor: '#eef9fb', borderColor: '#d1ecf1' },
   boxFuture: { backgroundColor: '#ffffff', borderColor: '#f0f0f0' },
   iconContainer: { height: 20, justifyContent: 'center' },
   monthAbbrText: { fontSize: 7, color: '#666', fontWeight: 'bold', textTransform: 'uppercase' },
-  
   noData: { textAlign: 'center', marginTop: 50, color: '#999' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 25 },
   modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 10, maxHeight: '70%' },

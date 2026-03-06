@@ -9,6 +9,13 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+// Import the dynamic API base address
+import { API_BASE } from '../../../src/api/axios';
+
+/**
+ * TabLayout Component
+ * Manages the main navigation tabs and global UI listeners.
+ */
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const navigation = useNavigation();
@@ -36,7 +43,7 @@ export default function TabLayout() {
       const token = await AsyncStorage.getItem('userToken');
       if (!token) return;
       
-      const res = await axios.get(`http://192.168.1.16:8000/api/chat/unread-count?t=${Date.now()}`, {
+      const res = await axios.get(`${API_BASE}/chat/unread-count?t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -49,7 +56,7 @@ export default function TabLayout() {
   };
 
   useEffect(() => {
-    // Load user session data
+    // Load initial user session data
     AsyncStorage.getItem('userData').then(d => {
       if (d) myUserId.current = JSON.parse(d).id;
     });
@@ -57,6 +64,13 @@ export default function TabLayout() {
     
     // Initial badge sync
     hardSyncBadge();
+
+    /**
+     * Listener: Update profile photo in the TabBar immediately
+     */
+    const photoSub = DeviceEventEmitter.addListener('user-photo-updated', (newPhoto) => {
+      setUserPhoto(newPhoto);
+    });
 
     // Listen for new incoming messages
     const msgSub = DeviceEventEmitter.addListener('new-message-received', (e) => {
@@ -105,6 +119,7 @@ export default function TabLayout() {
     });
 
     return () => {
+      photoSub.remove(); // Cleanup photo listener
       msgSub.remove();
       activeSub.remove();
       readSub.remove();
@@ -125,7 +140,6 @@ export default function TabLayout() {
         </Pressable>
       ),
     }}>
-      {/* Pestañas Visibles en el TabBar */}
       <Tabs.Screen 
         name="home" 
         options={{ 
@@ -149,12 +163,12 @@ export default function TabLayout() {
         options={{ 
           title: 'Mi Cuenta', 
           tabBarIcon: ({ color }) => userPhoto 
-            ? <Image source={{ uri: userPhoto }} style={{ width: 28, height: 28, borderRadius: 14 }} /> 
+            ? <Image key={userPhoto} source={{ uri: userPhoto }} style={{ width: 28, height: 28, borderRadius: 14 }} /> 
             : <IconSymbol size={28} name="person.fill" color={color} /> 
         }} 
       />
       
-      {/* Pantallas Ocultas del TabBar pero con títulos traducidos para el Header */}
+      {/* Hidden Screens */}
       <Tabs.Screen name="chat/[id]" options={{ href: null, title: 'Chat' }} />
       <Tabs.Screen name="residents" options={{ href: null, title: 'Residentes' }} />
       <Tabs.Screen name="roles" options={{ href: null, title: 'Roles' }} />

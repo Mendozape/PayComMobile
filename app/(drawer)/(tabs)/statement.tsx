@@ -6,15 +6,16 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios from app/(drawer)/(tabs)/
+import { API_BASE } from '../../../src/api/axios';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
-const API_BASE = 'http://192.168.1.16:8000/api';
-
 /**
  * StatementScreen Component
- * Replaced horizontal scroll with a Modal-based selector for better UX.
+ * Allows residents to view their account statements, payment history, and pending balances.
  */
 export default function StatementScreen() {
   const [allAddresses, setAllAddresses] = useState<any[]>([]);
@@ -23,7 +24,7 @@ export default function StatementScreen() {
   const [paidMonths, setPaidMonths] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(true);
-  const [showPicker, setShowPicker] = useState(false); // Modal visibility state
+  const [showPicker, setShowPicker] = useState(false); 
 
   const currentYear = new Date().getFullYear();
   const availableYears = [currentYear - 1, currentYear, currentYear + 1];
@@ -44,7 +45,7 @@ export default function StatementScreen() {
   }, [year, addressDetails]);
 
   /**
-   * Fetches user properties and validates 'ver-estado-cuenta' permission.
+   * Fetches user properties and validates 'ver-estado-cuenta' permission using dynamic API_BASE.
    */
   const fetchInitialData = async () => {
     try {
@@ -54,6 +55,7 @@ export default function StatementScreen() {
       });
       
       const freshUser = response.data;
+      // Flatten permissions from roles and direct permissions
       const perms = [
         ...(freshUser.permissions || []), 
         ...(freshUser.roles?.flatMap((r: any) => r.permissions || []) || [])
@@ -77,7 +79,7 @@ export default function StatementScreen() {
   };
 
   /**
-   * Fetches the specific payment history for the address/year combination.
+   * Fetches the specific payment history for the selected address/year combination.
    */
   const fetchStatement = async () => {
     try {
@@ -92,6 +94,9 @@ export default function StatementScreen() {
     }
   };
 
+  /**
+   * Helper to find payment data for a specific month number.
+   */
   const getMonthStatus = (monthNum: number) => 
     paidMonths.find(item => Number(item.month) === monthNum);
 
@@ -111,7 +116,7 @@ export default function StatementScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <ThemedText type="subtitle" style={styles.title}>Estado de Cuenta</ThemedText>
 
-        {/* --- SELECTOR DE PROPIEDAD (Estilo Dropdown) --- */}
+        {/* PROPERTY SELECTOR (Dropdown style) */}
         <ThemedText style={styles.selectionLabel}>Seleccionar Propiedad:</ThemedText>
         <TouchableOpacity 
           style={styles.pickerTrigger} 
@@ -128,7 +133,7 @@ export default function StatementScreen() {
           <IconSymbol name="chevron.down" size={20} color="#666" />
         </TouchableOpacity>
 
-        {/* --- MODAL PARA LA LISTA DE PROPIEDADES --- */}
+        {/* MODAL FOR PROPERTY LIST */}
         <Modal visible={showPicker} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -161,7 +166,7 @@ export default function StatementScreen() {
           </View>
         </Modal>
 
-        {/* --- SELECTOR DE AÑO --- */}
+        {/* YEAR SELECTOR */}
         <View style={styles.yearRow}>
           {availableYears.map(y => (
             <TouchableOpacity 
@@ -174,7 +179,7 @@ export default function StatementScreen() {
           ))}
         </View>
 
-        {/* --- LISTADO DE PAGOS --- */}
+        {/* PAYMENTS LISTING */}
         <View style={styles.listContainer}>
           {months.map(m => {
             const status = getMonthStatus(m.v);
@@ -211,8 +216,6 @@ const styles = StyleSheet.create({
   title: { marginBottom: 15 },
   errorText: { marginTop: 10, fontWeight: 'bold' },
   selectionLabel: { fontSize: 12, fontWeight: 'bold', color: '#888', marginBottom: 5, textTransform: 'uppercase' },
-  
-  // Custom Select Styles
   pickerTrigger: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
@@ -227,8 +230,6 @@ const styles = StyleSheet.create({
   },
   pickerTriggerText: { fontWeight: 'bold', fontSize: 16 },
   pickerTriggerSub: { fontSize: 12, color: '#999' },
-  
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 20, maxHeight: '80%' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
@@ -237,7 +238,6 @@ const styles = StyleSheet.create({
   modalItemText: { fontSize: 16 },
   closeBtn: { marginTop: 15, padding: 12, backgroundColor: '#eee', borderRadius: 10, alignItems: 'center' },
   closeBtnText: { fontWeight: 'bold', color: '#333' },
-
   yearRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   yearBtn: { flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', marginHorizontal: 4, backgroundColor: 'white' },
   activeYearBtn: { backgroundColor: '#007bff', borderColor: '#0056b3' },

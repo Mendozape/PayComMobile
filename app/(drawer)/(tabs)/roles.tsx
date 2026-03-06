@@ -17,6 +17,9 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios'; 
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -36,8 +39,9 @@ interface Role {
   permissions?: Permission[];
 }
 
-const ROLES_ENDPOINT = 'http://192.168.1.16:8000/api/roles';
-const PERMS_ENDPOINT = 'http://192.168.1.16:8000/api/permisos';
+// Dynamic endpoints constructed from API_BASE
+const ROLES_ENDPOINT = `${API_BASE}/roles`;
+const PERMS_ENDPOINT = `${API_BASE}/permisos`;
 
 export default function RolesScreen() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -60,11 +64,15 @@ export default function RolesScreen() {
     selectedPermissions: [] as number[]
   });
 
+  /**
+   * Initial data load on mount.
+   */
   useEffect(() => {
     const initialize = async () => {
       try {
         const jsonValue = await AsyncStorage.getItem('userData');
         if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
+        // Concurrent fetch from dynamic endpoints
         await Promise.all([fetchRoles(), fetchPermissions()]);
       } catch (e) {
         console.error("Initialization Error:", e);
@@ -80,6 +88,9 @@ export default function RolesScreen() {
   const canEdit = can('Editar-roles');
   const canDelete = can('Eliminar-roles');
 
+  /**
+   * Fetches roles list from dynamic endpoint.
+   */
   const fetchRoles = async () => {
     setLoading(true);
     try {
@@ -95,6 +106,9 @@ export default function RolesScreen() {
     }
   };
 
+  /**
+   * Fetches all available permissions to populate the checklist.
+   */
   const fetchPermissions = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -133,6 +147,9 @@ export default function RolesScreen() {
     }));
   };
 
+  /**
+   * Logic for Save/Update operations via dynamic API base.
+   */
   const handleSave = async () => {
     if (!formData.name.trim() || formData.selectedPermissions.length === 0) {
       Alert.alert("Error", "Nombre y al menos un permiso son obligatorios.");
@@ -150,9 +167,11 @@ export default function RolesScreen() {
       };
 
       if (editingRole) {
+        // Dynamic PUT request
         await axios.put(`${ROLES_ENDPOINT}/${editingRole.id}`, payload, config);
         Alert.alert("Éxito", "Role actualizado correctamente.");
       } else {
+        // Dynamic POST request
         await axios.post(ROLES_ENDPOINT, payload, config);
         Alert.alert("Éxito", "Role creado correctamente.");
       }
@@ -166,10 +185,14 @@ export default function RolesScreen() {
     }
   };
 
+  /**
+   * Permanent role deletion using dynamic endpoint.
+   */
   const confirmDelete = async () => {
     if (!roleToDelete) return;
     try {
       const token = await AsyncStorage.getItem('userToken');
+      // Dynamic DELETE request
       await axios.delete(`${ROLES_ENDPOINT}/${roleToDelete}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -317,7 +340,7 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: 'white', borderRadius: 20, width: '100%', maxHeight: '80%', overflow: 'hidden' },
   modalBody: { paddingHorizontal: 25, paddingTop: 25 },
   labelSmall: { fontSize: 11, color: '#888', fontWeight: 'bold', textTransform: 'uppercase' },
-  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 20, fontSize: 15, paddingVertical: 5 },
+  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 20, fontSize: 15, paddingVertical: 5, color: '#333' },
   permissionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 30 },
   permChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#ccc' },
   permChipActive: { backgroundColor: '#28a745', borderColor: '#28a745' },

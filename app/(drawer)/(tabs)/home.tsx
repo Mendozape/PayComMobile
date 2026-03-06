@@ -12,8 +12,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import usePermission from '@/hooks/usePermission';
 
-// API Configuration
-const API_BASE = 'http://192.168.1.16:8000/api';
+// Import the dynamic API_BASE from your centralized axios config
+import { API_BASE } from '../../../src/api/axios'; 
 
 /**
  * HomeScreen Component (Stats)
@@ -21,7 +21,7 @@ const API_BASE = 'http://192.168.1.16:8000/api';
  */
 export default function HomeScreen() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState(null);
   const [counts, setCounts] = useState({ userCount: 0, roleCount: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,11 +64,12 @@ export default function HomeScreen() {
   }, [user]);
 
   /**
-   * Fetches statistics from Laravel API
+   * Fetches statistics from Laravel API using centralized API_BASE
    */
   const fetchCounts = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
+      // Using dynamic API_BASE to handle Dev or Prod automatically
       const response = await axios.get(`${API_BASE}/users/count`, {
         headers: { 
           Authorization: `Bearer ${token}`, 
@@ -178,7 +179,7 @@ const styles = StyleSheet.create({
     flex: 1, 
     borderRadius: 20, 
     padding: 18, 
-    minHeight: 155, // Increased slightly
+    minHeight: 155, 
     justifyContent: 'space-between',
     elevation: 5,
     shadowColor: '#000',
@@ -191,15 +192,15 @@ const styles = StyleSheet.create({
   cardHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
-    alignItems: 'center', // Changed to center for vertical alignment
-    paddingTop: 5 // Padding to prevent clipping on top
+    alignItems: 'center', 
+    paddingTop: 5 
   },
   cardNumber: { 
     fontSize: 32, 
     fontWeight: 'bold', 
     color: 'white',
-    lineHeight: 38, // Explicit line height to ensure full rendering
-    includeFontPadding: false // Android specific to prevent extra spacing
+    lineHeight: 38, 
+    includeFontPadding: false 
   },
   cardTitle: { color: 'white', fontSize: 14, fontWeight: 'bold', marginTop: 10 },
   manageBtn: { 

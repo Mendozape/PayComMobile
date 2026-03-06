@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, TouchableOpacity, Alert, View, Image, TextInput, ActivityIndicator, Modal } from 'react-native';
+import { 
+  StyleSheet, 
+  TouchableOpacity, 
+  Alert, 
+  View, 
+  Image, 
+  TextInput, 
+  ActivityIndicator, 
+  Modal, 
+  DeviceEventEmitter 
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
+
+// Corrected relative path to reach src/api/axios from app/(drawer)/(tabs)/
+import { API_BASE } from '../../../src/api/axios'; 
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
@@ -14,7 +27,6 @@ import { disconnectEcho } from '@/services/echo';
 /**
  * ProfileScreen component
  * Handles user profile management and session termination.
- * UI is localized in Spanish for the end user.
  */
 export default function ProfileScreen() {
   const router = useRouter();
@@ -29,19 +41,20 @@ export default function ProfileScreen() {
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   
   // Media and loading states
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Initial data fetch state
-  const [isUploading, setIsUploading] = useState(false); // Save process state
+  const [imageUri, setImageUri] = useState(null);
+  const [isLoading, setIsLoading] = useState(true); 
+  const [isUploading, setIsUploading] = useState(false); 
 
   /**
-   * Fetch user data from the API on mount
+   * Fetch user data from the API on mount using dynamic API_BASE
    */
   useEffect(() => {
     const fetchUserData = async () => {
       setIsLoading(true);
       try {
         const token = await AsyncStorage.getItem('userToken');
-        const response = await axios.get('http://192.168.1.16:8000/api/user', {
+        // Fetch user data using centralized dynamic URL
+        const response = await axios.get(`${API_BASE}/user`, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
         });
         
@@ -49,15 +62,19 @@ export default function ProfileScreen() {
         setEmail(response.data.email);
         setPhone(response.data.phone || ''); 
         
-        // Construct and save the profile photo URL if it exists
+        // Construct profile photo URL based on the current environment (Dev/Prod)
         if (response.data.profile_photo_path) {
-          const photoUrl = `http://192.168.1.16:8000/storage/images/${response.data.profile_photo_path}`;
-          setImageUri(photoUrl);
+          const baseUrl = API_BASE.replace('/api', '');
+          const photoUrl = `${baseUrl}/storage/images/${response.data.profile_photo_path}`;
+          
+          // Add cache buster to initial load
+          const freshUrl = `${photoUrl}?t=${Date.now()}`;
+          setImageUri(freshUrl);
           await AsyncStorage.setItem('userProfilePhoto', photoUrl);
         }
       } catch (error) {
         console.error("Fetch Error:", error);
-        Alert.alert("Error", "No se pudo obtener la información del usuario.");
+        Alert.alert("Error", "Could not retrieve user information.");
       } finally {
         setIsLoading(false);
       }
@@ -79,7 +96,7 @@ export default function ProfileScreen() {
   };
 
   /**
-   * Clear session and redirect to the login/landing page
+   * Clear session and redirect to login
    */
   const handleLogout = async () => {
     Alert.alert(
@@ -92,7 +109,6 @@ export default function ProfileScreen() {
           style: "destructive",
           onPress: async () => {
             disconnectEcho();
-            // Clear all local session data
             await AsyncStorage.multiRemove(['isLoggedIn', 'userToken', 'userProfilePhoto', 'userData']);
             router.replace('/');
           }
@@ -102,21 +118,21 @@ export default function ProfileScreen() {
   };
 
   /**
-   * Submit profile updates to the backend
+   * Submit profile updates using dynamic API_BASE
    */
   const handleSaveProfile = async () => {
     if (!name) {
-      Alert.alert("Error", "El nombre es obligatorio.");
+      Alert.alert("Error", "Name is required.");
       return;
     }
 
     if (password.length > 0) {
       if (password.length < 6) {
-        Alert.alert("Error", "La contraseña debe tener al menos 6 caracteres.");
+        Alert.alert("Error", "Password must be at least 6 characters.");
         return;
       }
       if (password !== passwordConfirmation) {
-        Alert.alert("Error", "Las contraseñas no coinciden.");
+        Alert.alert("Error", "Passwords do not match.");
         return;
       }
     }
@@ -135,7 +151,7 @@ export default function ProfileScreen() {
         formData.append('password_confirmation', passwordConfirmation);
       }
 
-      // Handle file preparation for upload if uri is local
+      // Prepare local image for upload
       if (imageUri && !imageUri.startsWith('http')) {
         const filename = imageUri.split('/').pop() || 'photo.jpg';
         const match = /\.(\w+)$/.exec(filename);
@@ -148,7 +164,8 @@ export default function ProfileScreen() {
         } as any);
       }
 
-      await axios.post('http://192.168.1.16:8000/api/profile/update', formData, {
+      // POST update using centralized dynamic URL
+      const response = await axios.post(`${API_BASE}/profile/update`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`,
@@ -156,8 +173,20 @@ export default function ProfileScreen() {
         },
       });
 
-      if (imageUri) {
-        await AsyncStorage.setItem('userProfilePhoto', imageUri);
+      // Handle successful photo update and notify other components
+      if (response.data.user?.profile_photo_path) {
+        const baseUrl = API_BASE.replace('/api', '');
+        const finalUrl = `${baseUrl}/storage/images/${response.data.user.profile_photo_path}`;
+        
+        // Save base URL to storage
+        await AsyncStorage.setItem('userProfilePhoto', finalUrl);
+        
+        // Create fresh URL with timestamp to force refresh everywhere
+        const freshUrl = `${finalUrl}?t=${Date.now()}`;
+        setImageUri(freshUrl);
+        
+        // Broadcast change to TabLayout and other listeners
+        DeviceEventEmitter.emit('user-photo-updated', freshUrl);
       }
 
       setPassword('');
@@ -171,7 +200,7 @@ export default function ProfileScreen() {
       
     } catch (e: any) {
       console.error("Save Error:", e.response?.data || e.message);
-      Alert.alert("Error", "No se pudo guardar la información.");
+      Alert.alert("Error", "Could not save profile information.");
     } finally {
       setIsUploading(false);
     }
@@ -198,7 +227,7 @@ export default function ProfileScreen() {
             <TouchableOpacity onPress={pickImage} disabled={isUploading}>
               <View style={styles.imageWrapper}>
                 {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={styles.profileImage} />
+                  <Image key={imageUri} source={{ uri: imageUri }} style={styles.profileImage} />
                 ) : (
                   <IconSymbol size={180} name="person.crop.circle.fill" color="#808080" />
                 )}
@@ -236,6 +265,7 @@ export default function ProfileScreen() {
               value={phone} 
               onChangeText={setPhone} 
               placeholder="Teléfono"
+              placeholderTextColor="#888"
               keyboardType="phone-pad"
             />
 
@@ -248,6 +278,7 @@ export default function ProfileScreen() {
                 value={password} 
                 onChangeText={setPassword} 
                 placeholder="Cambiar contraseña"
+                placeholderTextColor="#888"
                 secureTextEntry
               />
 
@@ -256,11 +287,11 @@ export default function ProfileScreen() {
                 style={styles.input} 
                 value={passwordConfirmation} 
                 onChangeText={setPasswordConfirmation} 
+                placeholderTextColor="#888"
                 secureTextEntry
               />
             </View>
             
-            {/* ACTION BUTTONS */}
             <TouchableOpacity 
               style={styles.saveButton} 
               onPress={handleSaveProfile}

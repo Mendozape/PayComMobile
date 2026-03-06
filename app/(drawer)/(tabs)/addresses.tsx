@@ -13,8 +13,13 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import usePermission from '@/hooks/usePermission';
 
-const API_BASE = 'http://192.168.1.16:8000/api';
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios'; 
 
+/**
+ * AddressesScreen Component
+ * Manages the housing units (addresses) within the community.
+ */
 export default function AddressesScreen() {
   const router = useRouter();
   const [addresses, setAddresses] = useState<any[]>([]);
@@ -24,10 +29,12 @@ export default function AddressesScreen() {
   const [search, setSearch] = useState('');
   const [user, setUser] = useState<any>(null);
 
+  // Modal and view states
   const [modalVisible, setModalVisible] = useState(false);
   const [viewState, setViewState] = useState<'FORM' | 'STREET_PICKER' | 'USER_PICKER' | 'TYPE_PICKER' | 'STATUS_PICKER'>('FORM');
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
 
+  // Form states
   const [editingId, setEditingId] = useState<number | null>(null);
   const [streetId, setStreetId] = useState('');
   const [streetName, setStreetName] = useState('Seleccionar Calle');
@@ -42,12 +49,13 @@ export default function AddressesScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   /**
-   * Initial data load
+   * Initialize data on component mount
    */
   useEffect(() => {
     const init = async () => {
       const data = await AsyncStorage.getItem('userData');
       if (data) setUser(JSON.parse(data));
+      // Fetch all required data from the dynamic API_BASE
       await Promise.all([fetchAddresses(), fetchStreets(), fetchUsers()]);
       setLoading(false);
     };
@@ -57,7 +65,7 @@ export default function AddressesScreen() {
   const { can } = usePermission(user);
 
   /**
-   * Fetch logic
+   * API Fetching logic using centralized API_BASE
    */
   const fetchAddresses = async () => {
     try {
@@ -66,25 +74,32 @@ export default function AddressesScreen() {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } 
       });
       setAddresses(res.data.data || res.data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Fetch Addresses Error:", e); }
   };
 
   const fetchStreets = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/streets`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`${API_BASE}/streets`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
       setStreets((res.data.data || res.data).filter((s: any) => !s.deleted_at));
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Fetch Streets Error:", e); }
   };
 
   const fetchUsers = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/usuarios`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`${API_BASE}/usuarios`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
       setUsers(res.data.data || res.data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Fetch Users Error:", e); }
   };
 
+  /**
+   * Form logic to open modal for Create or Edit
+   */
   const openForm = (item: any = null) => {
     setEditingId(item?.id || null);
     setStreetId(item?.street_id?.toString() || '');
@@ -101,10 +116,12 @@ export default function AddressesScreen() {
   };
 
   /**
-   * Save and Update logic
+   * Save or Update address information
    */
   const handleSave = async () => {
-    if (!streetId || !streetNumber || !residentId) return Alert.alert("Atención", "Por favor, completa los campos obligatorios.");
+    if (!streetId || !streetNumber || !residentId) {
+      return Alert.alert("Atención", "Por favor, completa los campos obligatorios.");
+    }
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -142,10 +159,12 @@ export default function AddressesScreen() {
   };
 
   /**
-   * Soft delete logic
+   * Logic for soft deleting (deactivating) an address
    */
   const handleDelete = async () => {
-    if (deactivationReason.trim().length < 5) return Alert.alert("Atención", "Por favor, ingresa un motivo válido (mínimo 5 caracteres).");
+    if (deactivationReason.trim().length < 5) {
+      return Alert.alert("Atención", "Por favor, ingresa un motivo válido (mínimo 5 caracteres).");
+    }
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -178,7 +197,10 @@ export default function AddressesScreen() {
       </View>
 
       <FlatList
-        data={addresses.filter(a => a.street?.name?.toLowerCase().includes(search.toLowerCase()) || a.user?.name?.toLowerCase().includes(search.toLowerCase()))}
+        data={addresses.filter(a => 
+            a.street?.name?.toLowerCase().includes(search.toLowerCase()) || 
+            a.user?.name?.toLowerCase().includes(search.toLowerCase())
+        )}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
           <View style={[styles.card, item.deleted_at && { opacity: 0.6 }]}>
@@ -223,15 +245,14 @@ export default function AddressesScreen() {
         )}
       />
 
-      {/* FORM MODAL */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalContainer}>
             <View style={styles.modalContent}>
               {viewState !== 'FORM' ? (
                 <View style={{height: 400}}>
-                   <ThemedText style={styles.modalLabelTitle}>Selecciona una opción</ThemedText>
-                   <FlatList 
+                    <ThemedText style={styles.modalLabelTitle}>Selecciona una opción</ThemedText>
+                    <FlatList 
                       data={viewState === 'STREET_PICKER' ? streets : viewState === 'USER_PICKER' ? users : viewState === 'TYPE_PICKER' ? [{id:'CASA', name:'CASA'}, {id:'TERRENO', name:'TERRENO'}] : [{id:'Habitada', name:'Habitada'}, {id:'Deshabitada', name:'Deshabitada'}]} 
                       renderItem={({item}) => (
                         <TouchableOpacity style={styles.pickerItem} onPress={() => {
@@ -241,8 +262,8 @@ export default function AddressesScreen() {
                            if(viewState==='STATUS_PICKER') setStatus(item.id);
                            setViewState('FORM');
                         }}><ThemedText>{item.name}</ThemedText></TouchableOpacity>
-                   )} />
-                   <TouchableOpacity style={styles.backBtn} onPress={() => setViewState('FORM')}><ThemedText style={{color:'#fff'}}>Regresar</ThemedText></TouchableOpacity>
+                    )} />
+                    <TouchableOpacity style={styles.backBtn} onPress={() => setViewState('FORM')}><ThemedText style={{color:'#fff'}}>Regresar</ThemedText></TouchableOpacity>
                 </View>
               ) : (
                 <View>
@@ -269,7 +290,6 @@ export default function AddressesScreen() {
         </View>
       </Modal>
 
-      {/* DELETION MODAL */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -279,7 +299,7 @@ export default function AddressesScreen() {
             <View style={styles.modalButtons}>
               <TouchableOpacity onPress={() => setDeleteModalVisible(false)}><ThemedText>Regresar</ThemedText></TouchableOpacity>
               <TouchableOpacity style={[styles.saveBtn, {backgroundColor: isSaving ? '#666' : '#ff4444'}]} onPress={handleDelete} disabled={isSaving}>
-                 {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{color:'white', fontWeight: 'bold'}}>Dar de Baja</ThemedText>}
+                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{color:'white', fontWeight: 'bold'}}>Dar de Baja</ThemedText>}
               </TouchableOpacity>
             </View>
           </View>

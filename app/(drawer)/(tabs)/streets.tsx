@@ -8,6 +8,9 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios from app/(drawer)/
+import { API_BASE } from '../../../src/api/axios';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -22,7 +25,8 @@ interface Street {
   deleted_at: string | null;
 }
 
-const ENDPOINT = 'http://192.168.1.16:8000/api/streets';
+// Construct the endpoint using the dynamic API_BASE
+const ENDPOINT = `${API_BASE}/streets`;
 
 export default function StreetsScreen() {
   const [streets, setStreets] = useState<Street[]>([]);
@@ -44,7 +48,7 @@ export default function StreetsScreen() {
   const [deactivationReason, setDeactivationReason] = useState<string>('');
 
   /**
-   * 🛡️ INITIAL LOAD
+   * 🛡️ INITIAL LOAD: Load profile and street data on mount
    */
   useEffect(() => {
     const initialize = async () => {
@@ -67,7 +71,7 @@ export default function StreetsScreen() {
   const canDeactivate = can('Eliminar-calles');
 
   /**
-   * Fetches the street catalog
+   * Fetches the street catalog from the dynamic API_BASE
    */
   const fetchStreets = async () => {
     setLoading(true);
@@ -107,7 +111,7 @@ export default function StreetsScreen() {
   };
 
   /**
-   * Logic for soft delete
+   * Logic for soft delete with a required reason
    */
   const handleDeactivation = async () => {
     if (!deactivationReason.trim()) {
@@ -137,7 +141,7 @@ export default function StreetsScreen() {
   };
 
   /**
-   * Logic for Create / Update
+   * Logic for Create (POST) / Update (PUT)
    */
   const handleSave = async () => {
     if (!streetName.trim()) {
@@ -152,9 +156,11 @@ export default function StreetsScreen() {
       
       let successMsg = "";
       if (editingStreet) {
+        // Dynamic PUT request
         await axios.put(`${ENDPOINT}/${editingStreet.id}`, { name: streetName }, config);
         successMsg = "Calle actualizada correctamente.";
       } else {
+        // Dynamic POST request
         await axios.post(ENDPOINT, { name: streetName }, config);
         successMsg = "Calle creada exitosamente.";
       }
@@ -259,7 +265,7 @@ export default function StreetsScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: DEACTIVATION --- */}
+      {/* --- MODAL: DEACTIVATION (Soft Delete) --- */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>

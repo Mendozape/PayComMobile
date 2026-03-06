@@ -8,6 +8,9 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Corrected relative path to reach src/api/axios
+import { API_BASE } from '../../../src/api/axios';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -22,7 +25,8 @@ interface ExpenseCategory {
   deleted_at: string | null;
 }
 
-const ENDPOINT = 'http://192.168.1.16:8000/api/expense_categories';
+// Construct the endpoint using the dynamic API_BASE
+const ENDPOINT = `${API_BASE}/expense_categories`;
 
 export default function ExpenseCategoriesScreen() {
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
@@ -43,13 +47,14 @@ export default function ExpenseCategoriesScreen() {
   const [name, setName] = useState<string>('');
 
   /**
-   * Initial data load
+   * Initial data load on component mount.
    */
   useEffect(() => {
     const initialize = async () => {
       try {
         const jsonValue = await AsyncStorage.getItem('userData');
         if (jsonValue) setUser(JSON.parse(jsonValue));
+        // Initial fetch from the dynamic endpoint
         await fetchCategories();
       } catch (e) {
         console.error("Initialization Error:", e);
@@ -66,7 +71,7 @@ export default function ExpenseCategoriesScreen() {
   const canDelete = can('Eliminar-catalogo-gastos');
 
   /**
-   * Fetches categories from server
+   * Fetches expense categories from the server using dynamic API_BASE.
    */
   const fetchCategories = async () => {
     setLoading(true);
@@ -102,7 +107,7 @@ export default function ExpenseCategoriesScreen() {
   };
 
   /**
-   * Logical deletion with success alert
+   * Logic for soft deleting (deactivating) a category.
    */
   const handleDeactivation = async () => {
     setIsSaving(true);
@@ -119,7 +124,7 @@ export default function ExpenseCategoriesScreen() {
         fetchCategories();
       });
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Fallo al dar de baja la categoría.";
+      const msg = error.response?.data?.message || "Failed to deactivate category.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -127,7 +132,7 @@ export default function ExpenseCategoriesScreen() {
   };
 
   /**
-   * Save or Update operation with success alert
+   * Handles both Create (POST) and Update (PUT) operations.
    */
   const handleSave = async () => {
     if (!name.trim()) {
@@ -142,9 +147,11 @@ export default function ExpenseCategoriesScreen() {
 
       let successMsg = "";
       if (editingCategory) {
+        // Dynamic PUT request
         await axios.put(`${ENDPOINT}/${editingCategory.id}`, payload, config);
         successMsg = "Categoría actualizada correctamente.";
       } else {
+        // Dynamic POST request
         await axios.post(ENDPOINT, payload, config);
         successMsg = "Categoría registrada exitosamente.";
       }
@@ -157,7 +164,7 @@ export default function ExpenseCategoriesScreen() {
       });
 
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Error al intentar guardar la categoría.";
+      const msg = error.response?.data?.message || "Error while saving the category.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -259,7 +266,7 @@ export default function ExpenseCategoriesScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: CONFIRM DELETION --- */}
+      {/* --- MODAL: CONFIRM DELETION (Soft Delete) --- */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
