@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react'; // Removed useEffect, kept useCallback
 import { 
   StyleSheet, View, ActivityIndicator, 
   TouchableOpacity, ScrollView, RefreshControl 
@@ -6,7 +6,7 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -21,7 +21,7 @@ import { API_BASE } from '../../../src/api/axios';
  */
 export default function HomeScreen() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [counts, setCounts] = useState({ userCount: 0, roleCount: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -30,47 +30,57 @@ export default function HomeScreen() {
   const { can } = usePermission(user);
 
   /**
-   * Load user from storage on mount
+   * 🛡️ FOCUS LOAD: Refreshes statistics every time the user returns to the Dashboard.
+   * This ensures counts are always up to date after adding/removing records.
    */
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        const userDataJson = await AsyncStorage.getItem('userData');
-        if (userDataJson) {
-          const parsedUser = JSON.parse(userDataJson);
-          setUser(parsedUser);
-        } else {
+  useFocusEffect(
+    useCallback(() => {
+      const initialize = async () => {
+        try {
+          const userDataJson = await AsyncStorage.getItem('userData');
+          if (userDataJson) {
+            const parsedUser = JSON.parse(userDataJson);
+            setUser(parsedUser);
+            
+            // Only fetch counts if the user has permission
+            // We use parsedUser here because the 'user' state might not be updated yet
+            const permissions = parsedUser.roles?.[0]?.permissions || [];
+            const canSeeStats = permissions.some((p: any) => 
+              ['Ver-usuarios', 'Ver-roles'].includes(p.name)
+            );
+
+            if (canSeeStats) {
+              await fetchCounts();
+            } else {
+              setLoading(false);
+            }
+          } else {
+            setLoading(false);
+          }
+        } catch (e) {
+          console.error("Load error in Home:", e);
           setLoading(false);
         }
-      } catch (e) {
-        console.error("Load error in Home:", e);
-        setLoading(false);
-      }
-    };
-    initialize();
-  }, []);
+      };
+
+      initialize();
+
+      return () => {
+        // Optional cleanup
+      };
+    }, [])
+  );
 
   /**
-   * Fetch counts whenever user data is ready
-   */
-  useEffect(() => {
-    if (user) {
-      if (can('Ver-usuarios') || can('Ver-roles')) {
-        fetchCounts();
-      } else {
-        setLoading(false);
-      }
-    }
-  }, [user]);
-
-  /**
-   * Fetches statistics from Laravel API using centralized API_BASE
+   * Fetches statistics from Laravel API using centralized API_BASE.
+   * Added cache busting via timestamp.
    */
   const fetchCounts = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      // Using dynamic API_BASE to handle Dev or Prod automatically
-      const response = await axios.get(`${API_BASE}/users/count`, {
+      const t = new Date().getTime();
+      
+      const response = await axios.get(`${API_BASE}/users/count?t=${t}`, {
         headers: { 
           Authorization: `Bearer ${token}`, 
           Accept: 'application/json' 

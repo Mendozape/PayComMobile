@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // Added useCallback
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios';
@@ -46,34 +47,43 @@ export default function ExpensesScreen() {
   const [deactivationReason, setDeactivationReason] = useState('');
 
   /**
-   * Initial data load on mount.
+   * 🛡️ FOCUS LOAD: Refreshes expenses and categories every time the screen is focused.
+   * This ensures categories created in other modules are available here.
    */
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        const jsonValue = await AsyncStorage.getItem('userData');
-        if (jsonValue) setUser(JSON.parse(jsonValue));
-        // Concurrent fetch from dynamic endpoints
-        await Promise.all([fetchExpenses(), fetchCategories()]);
-      } catch (e) {
-        console.error("Initialization Error:", e);
-      } finally {
-        setIsReady(true);
-      }
-    };
-    initialize();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const initialize = async () => {
+        try {
+          const jsonValue = await AsyncStorage.getItem('userData');
+          if (jsonValue) setUser(JSON.parse(jsonValue));
+          // Concurrent fetch from dynamic endpoints with cache busting
+          await Promise.all([fetchExpenses(), fetchCategories()]);
+        } catch (e) {
+          console.error("Initialization Error:", e);
+        } finally {
+          setIsReady(true);
+        }
+      };
+      initialize();
+
+      return () => {
+        // Optional cleanup
+      };
+    }, [])
+  );
 
   const { can } = usePermission(user);
 
   /**
    * Fetches the full list of expenses using dynamic API_BASE.
+   * Added timestamp to bypass cache.
    */
   const fetchExpenses = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(ENDPOINT, {
+      const t = new Date().getTime();
+      const response = await axios.get(`${ENDPOINT}?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       const data = response.data.data || response.data;
@@ -87,11 +97,13 @@ export default function ExpensesScreen() {
 
   /**
    * Fetches active expense categories to populate the picker.
+   * Added timestamp to bypass cache.
    */
   const fetchCategories = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(CAT_ENDPOINT, {
+      const t = new Date().getTime();
+      const response = await axios.get(`${CAT_ENDPOINT}?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       const data = response.data.data || response.data;
@@ -206,39 +218,44 @@ export default function ExpensesScreen() {
         )}
       </View>
 
-      <FlatList
-        data={expenses.filter(e => e.category?.name?.toLowerCase().includes(search.toLowerCase()))}
-        keyExtractor={(item) => `exp-${item.id}`}
-        renderItem={({ item }) => (
-          <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
-            <View style={{ flex: 1 }}>
-              <ThemedText style={styles.itemName}>{item.category?.name || 'N/A'}</ThemedText>
-              <ThemedText style={styles.amountText}>${parseFloat(item.amount).toFixed(2)}</ThemedText>
-              <ThemedText style={styles.dateSubtext}>{item.expense_date.split(' ')[0]}</ThemedText>
-              {item.deleted_at && <ThemedText style={styles.deletedLabel}>Gasto Eliminado</ThemedText>}
+      {loading ? (
+        <ActivityIndicator size="large" color="#28a745" style={{ marginTop: 50 }} />
+      ) : (
+        <FlatList
+          data={expenses.filter(e => e.category?.name?.toLowerCase().includes(search.toLowerCase()))}
+          keyExtractor={(item) => `exp-${item.id}`}
+          renderItem={({ item }) => (
+            <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={styles.itemName}>{item.category?.name || 'N/A'}</ThemedText>
+                <ThemedText style={styles.amountText}>${parseFloat(item.amount).toFixed(2)}</ThemedText>
+                <ThemedText style={styles.dateSubtext}>{item.expense_date.split(' ')[0]}</ThemedText>
+                {item.deleted_at && <ThemedText style={styles.deletedLabel}>Gasto Eliminado</ThemedText>}
+              </View>
+              <View style={styles.actionRow}>
+                {!item.deleted_at ? (
+                  <>
+                    {can('Editar-gastos') && (
+                      <TouchableOpacity onPress={() => openForm(item)} style={styles.iconBtn}>
+                        <IconSymbol name="pencil" size={22} color="#007AFF" />
+                      </TouchableOpacity>
+                    )}
+                    {can('Eliminar-gastos') && (
+                      <TouchableOpacity onPress={() => openDelete(item)} style={styles.iconBtn}>
+                        <IconSymbol name="trash" size={22} color="#ff4444" />
+                      </TouchableOpacity>
+                    )}
+                  </>
+                ) : (
+                  <IconSymbol name="trash" size={22} color="#ccc" />
+                )}
+              </View>
             </View>
-            <View style={styles.actionRow}>
-              {!item.deleted_at ? (
-                <>
-                  {can('Editar-gastos') && (
-                    <TouchableOpacity onPress={() => openForm(item)} style={styles.iconBtn}>
-                      <IconSymbol name="pencil" size={22} color="#007AFF" />
-                    </TouchableOpacity>
-                  )}
-                  {can('Eliminar-gastos') && (
-                    <TouchableOpacity onPress={() => openDelete(item)} style={styles.iconBtn}>
-                      <IconSymbol name="trash" size={22} color="#ff4444" />
-                    </TouchableOpacity>
-                  )}
-                </>
-              ) : (
-                <IconSymbol name="trash" size={22} color="#ccc" />
-              )}
-            </View>
-          </View>
-        )}
-      />
+          )}
+        />
+      )}
 
+      {/* MODAL: CREATE / EDIT */}
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView 
@@ -297,6 +314,7 @@ export default function ExpensesScreen() {
         </View>
       </Modal>
 
+      {/* MODAL: CONFIRM DELETION */}
       <Modal visible={deleteModalVisible} transparent animationType="fade" onRequestClose={() => setDeleteModalVisible(false)}>
         <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>

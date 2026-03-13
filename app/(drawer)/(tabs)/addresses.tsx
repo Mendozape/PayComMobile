@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // Added useCallback
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, TextInput, 
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, 
@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view'; 
@@ -49,28 +49,39 @@ export default function AddressesScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   /**
-   * Initialize data on component mount
+   * 🛡️ FOCUS LOAD: Re-fetches all data every time the user navigates to this screen.
+   * This ensures that changes in Streets or Users are reflected here.
    */
-  useEffect(() => {
-    const init = async () => {
-      const data = await AsyncStorage.getItem('userData');
-      if (data) setUser(JSON.parse(data));
-      // Fetch all required data from the dynamic API_BASE
-      await Promise.all([fetchAddresses(), fetchStreets(), fetchUsers()]);
-      setLoading(false);
-    };
-    init();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const init = async () => {
+        setLoading(true);
+        const data = await AsyncStorage.getItem('userData');
+        if (data) setUser(JSON.parse(data));
+        
+        // Fetch all required data with cache busting
+        await Promise.all([fetchAddresses(), fetchStreets(), fetchUsers()]);
+        setLoading(false);
+      };
+      init();
+
+      return () => {
+        // Optional cleanup
+      };
+    }, [])
+  );
 
   const { can } = usePermission(user);
 
   /**
    * API Fetching logic using centralized API_BASE
+   * Added timestamp to prevent HTTP caching.
    */
   const fetchAddresses = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/addresses`, { 
+      const t = new Date().getTime();
+      const res = await axios.get(`${API_BASE}/addresses?t=${t}`, { 
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } 
       });
       setAddresses(res.data.data || res.data);
@@ -80,7 +91,8 @@ export default function AddressesScreen() {
   const fetchStreets = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/streets`, { 
+      const t = new Date().getTime();
+      const res = await axios.get(`${API_BASE}/streets?t=${t}`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setStreets((res.data.data || res.data).filter((s: any) => !s.deleted_at));
@@ -90,7 +102,8 @@ export default function AddressesScreen() {
   const fetchUsers = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/usuarios`, { 
+      const t = new Date().getTime();
+      const res = await axios.get(`${API_BASE}/usuarios?t=${t}`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setUsers(res.data.data || res.data);
@@ -196,55 +209,60 @@ export default function AddressesScreen() {
         )}
       </View>
 
-      <FlatList
-        data={addresses.filter(a => 
-            a.street?.name?.toLowerCase().includes(search.toLowerCase()) || 
-            a.user?.name?.toLowerCase().includes(search.toLowerCase())
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <View style={[styles.card, item.deleted_at && { opacity: 0.6 }]}>
-            <View style={{ flex: 1 }}>
-              <ThemedText style={styles.addressTitle}>{item.street?.name} #{item.street_number}</ThemedText>
-              <ThemedText style={styles.residentName}>👤 {item.user?.name || 'Vacante'}</ThemedText>
-              <View style={styles.badgeRow}>
-                <View style={[styles.badge, {backgroundColor: '#6c757d'}]}><ThemedText style={styles.badgeText}>{item.type}</ThemedText></View>
-                {item.type === 'CASA' && (
-                  <View style={[styles.badge, {backgroundColor: item.status === 'Habitada' ? '#007bff' : '#f0ad4e'}]}><ThemedText style={styles.badgeText}>{item.status}</ThemedText></View>
-                )}
-                {item.deleted_at && <View style={[styles.badge, {backgroundColor: '#ff4444'}]}><ThemedText style={styles.badgeText}>Inactivo</ThemedText></View>}
-              </View>
-            </View>
-            
-            <View style={styles.actionColumn}>
-              {!item.deleted_at && (
-                <View style={styles.mainActions}>
-                  {can('Crear-pagos') && (
-                    <TouchableOpacity onPress={() => router.push({ pathname: '/create-payment', params: { addressId: item.id } })} style={styles.iconCircle}>
-                      <IconSymbol name="cash.fill" size={18} color="#28a745" />
-                    </TouchableOpacity>
+      {loading ? (
+        <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
+      ) : (
+        <FlatList
+          data={addresses.filter(a => 
+              a.street?.name?.toLowerCase().includes(search.toLowerCase()) || 
+              a.user?.name?.toLowerCase().includes(search.toLowerCase())
+          )}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <View style={[styles.card, item.deleted_at && { opacity: 0.6 }]}>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={styles.addressTitle}>{item.street?.name} #{item.street_number}</ThemedText>
+                <ThemedText style={styles.residentName}>👤 {item.user?.name || 'Vacante'}</ThemedText>
+                <View style={styles.badgeRow}>
+                  <View style={[styles.badge, {backgroundColor: '#6c757d'}]}><ThemedText style={styles.badgeText}>{item.type}</ThemedText></View>
+                  {item.type === 'CASA' && (
+                    <View style={[styles.badge, {backgroundColor: item.status === 'Habitada' ? '#007bff' : '#f0ad4e'}]}><ThemedText style={styles.badgeText}>{item.status}</ThemedText></View>
                   )}
-                  {can('Ver-pagos') && (
-                    <TouchableOpacity onPress={() => router.push({ pathname: '/payment-history', params: { addressId: item.id } })} style={styles.iconCircle}>
-                      <IconSymbol name="road.fill" size={18} color="#f0ad4e" />
-                    </TouchableOpacity>
+                  {item.deleted_at && <View style={[styles.badge, {backgroundColor: '#ff4444'}]}><ThemedText style={styles.badgeText}>Inactivo</ThemedText></View>}
+                </View>
+              </View>
+              
+              <View style={styles.actionColumn}>
+                {!item.deleted_at && (
+                  <View style={styles.mainActions}>
+                    {can('Crear-pagos') && (
+                      <TouchableOpacity onPress={() => router.push({ pathname: '/create-payment', params: { addressId: item.id } })} style={styles.iconCircle}>
+                        <IconSymbol name="cash.fill" size={18} color="#28a745" />
+                      </TouchableOpacity>
+                    )}
+                    {can('Ver-pagos') && (
+                      <TouchableOpacity onPress={() => router.push({ pathname: '/payment-history', params: { addressId: item.id } })} style={styles.iconCircle}>
+                        <IconSymbol name="road.fill" size={18} color="#f0ad4e" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                
+                <View style={styles.adminActions}>
+                  {can('Editar-predios') && !item.deleted_at && (
+                    <TouchableOpacity onPress={() => openForm(item)}><IconSymbol name="pencil" size={18} color="#007AFF" /></TouchableOpacity>
+                  )}
+                  {can('Eliminar-predios') && !item.deleted_at && (
+                    <TouchableOpacity onPress={() => { setEditingId(item.id); setDeactivationReason(''); setDeleteModalVisible(true); }}><IconSymbol name="trash" size={18} color="#ff4444" /></TouchableOpacity>
                   )}
                 </View>
-              )}
-              
-              <View style={styles.adminActions}>
-                {can('Editar-predios') && !item.deleted_at && (
-                  <TouchableOpacity onPress={() => openForm(item)}><IconSymbol name="pencil" size={18} color="#007AFF" /></TouchableOpacity>
-                )}
-                {can('Eliminar-predios') && !item.deleted_at && (
-                  <TouchableOpacity onPress={() => { setEditingId(item.id); setDeactivationReason(''); setDeleteModalVisible(true); }}><IconSymbol name="trash" size={18} color="#ff4444" /></TouchableOpacity>
-                )}
               </View>
             </View>
-          </View>
-        )}
-      />
+          )}
+        />
+      )}
 
+      {/* MODALS REMAIN UNCHANGED IN STRUCTURE */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalContainer}>

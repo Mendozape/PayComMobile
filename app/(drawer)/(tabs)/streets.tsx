@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router'; // or '@react-navigation/native'
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios';
@@ -48,22 +49,33 @@ export default function StreetsScreen() {
   const [deactivationReason, setDeactivationReason] = useState<string>('');
 
   /**
-   * 🛡️ INITIAL LOAD: Load profile and street data on mount
+   * 🛡️ FOCUS LOAD: Refreshes data every time the screen comes into focus.
+   * This prevents stale data when navigating back and forth.
    */
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        const jsonValue = await AsyncStorage.getItem('userData');
-        if (jsonValue) setUser(JSON.parse(jsonValue));
-        await fetchStreets();
-      } catch (e) {
-        console.error("Initialization Error:", e);
-      } finally {
-        setIsReady(true);
-      }
-    };
-    initialize();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const initialize = async () => {
+        try {
+          // Load user data for permissions
+          const jsonValue = await AsyncStorage.getItem('userData');
+          if (jsonValue) setUser(JSON.parse(jsonValue));
+          
+          // Fetch fresh street data from the domain
+          await fetchStreets();
+        } catch (e) {
+          console.error("Initialization Error:", e);
+        } finally {
+          setIsReady(true);
+        }
+      };
+
+      initialize();
+
+      return () => {
+        // Optional: Clean up state if necessary when leaving the screen
+      };
+    }, [])
+  );
 
   const { can } = usePermission(user);
   const canCreate = can('Crear-calles');
@@ -72,13 +84,18 @@ export default function StreetsScreen() {
 
   /**
    * Fetches the street catalog from the dynamic API_BASE
+   * Added a timestamp (?t=...) to bypass potential HTTP caching in the emulator/device.
    */
   const fetchStreets = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(ENDPOINT, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+      const timestamp = new Date().getTime();
+      const response = await axios.get(`${ENDPOINT}?t=${timestamp}`, {
+        headers: { 
+          Authorization: `Bearer ${token}`, 
+          Accept: 'application/json' 
+        }
       });
       const data = response.data.data || response.data;
       setStreets(Array.isArray(data) ? data : []);
@@ -156,11 +173,9 @@ export default function StreetsScreen() {
       
       let successMsg = "";
       if (editingStreet) {
-        // Dynamic PUT request
         await axios.put(`${ENDPOINT}/${editingStreet.id}`, { name: streetName }, config);
         successMsg = "Calle actualizada correctamente.";
       } else {
-        // Dynamic POST request
         await axios.post(ENDPOINT, { name: streetName }, config);
         successMsg = "Calle creada exitosamente.";
       }

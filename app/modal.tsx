@@ -1,21 +1,32 @@
-import { Link } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { Link, useRouter } from 'expo-router';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
-// This is a template for modal screens (useful for pop-ups or quick details)
+/**
+ * ModalScreen Component
+ * A basic template for modal overlays. 
+ * Ideal for displaying quick info, help text, or simple detail views.
+ */
 export default function ModalScreen() {
+  const router = useRouter();
+
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title">Este es un modal</ThemedText>
+      <ThemedText type="title">Información</ThemedText>
       
-      {/* Note: This link currently points to '/', which is your Login. 
-          In a real scenario, you would point this to a specific screen or just use a back button.
+      <ThemedText style={styles.description}>
+        Este es un espacio para detalles rápidos o notificaciones del sistema.
+      </ThemedText>
+
+      {/* CRITICAL: Changed link logic. 
+        Using router.back() or dismissing the modal is safer than href="/",
+        which could re-trigger the Root Index gatekeeper.
       */}
-      <Link href="/" dismissTo style={styles.link}>
-        <ThemedText type="link">Volver a la pantalla principal</ThemedText>
-      </Link>
+      <TouchableOpacity onPress={() => router.back()} style={styles.link}>
+        <ThemedText type="link">Cerrar este mensaje</ThemedText>
+      </TouchableOpacity>
     </ThemedView>
   );
 }
@@ -27,8 +38,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
+  description: {
+    textAlign: 'center',
+    marginTop: 10,
+    color: '#666',
+  },
   link: {
-    marginTop: 15,
+    marginTop: 20,
     paddingVertical: 15,
   },
 });

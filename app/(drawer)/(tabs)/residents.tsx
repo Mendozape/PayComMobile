@@ -1,22 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  View,
-  TextInput,
-  ActivityIndicator,
-  Alert,
+import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
+import { 
+  StyleSheet, 
+  FlatList, 
+  TouchableOpacity, 
+  View, 
+  TextInput, 
+  ActivityIndicator, 
+  Alert, 
   Modal,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
+  KeyboardAvoidingView, 
+  Platform, 
+  TouchableWithoutFeedback, 
   Keyboard,
   ScrollView,
   InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios'; 
@@ -68,23 +69,30 @@ export default function ResidentsScreen() {
   });
 
   /**
-   * Initial setup: load permissions and data using dynamic API_BASE
+   * 🛡️ FOCUS LOAD: Refreshes users and roles every time the screen gains focus.
+   * This ensures the resident list is always up to date.
    */
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        const jsonValue = await AsyncStorage.getItem('userData');
-        if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
-        // Concurrent fetch from dynamic endpoints
-        await Promise.all([fetchUsers(), fetchRoles()]);
-      } catch (e) {
-        console.error("Initialization Error:", e);
-      } finally {
-        setIsReady(true);
-      }
-    };
-    initialize();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const initialize = async () => {
+        try {
+          const jsonValue = await AsyncStorage.getItem('userData');
+          if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
+          // Concurrent fetch from dynamic endpoints
+          await Promise.all([fetchUsers(), fetchRoles()]);
+        } catch (e) {
+          console.error("Initialization Error:", e);
+        } finally {
+          setIsReady(true);
+        }
+      };
+      initialize();
+
+      return () => {
+        // Optional cleanup
+      };
+    }, [])
+  );
 
   const { can } = usePermission(currentUser);
   const canCreate = can('Crear-usuarios');
@@ -92,13 +100,15 @@ export default function ResidentsScreen() {
   const canDelete = can('Eliminar-usuarios');
 
   /**
-   * Fetches users list from dynamic API endpoint
+   * Fetches users list from dynamic API endpoint.
+   * Added cache busting via timestamp.
    */
   const fetchUsers = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(ENDPOINT, {
+      const t = new Date().getTime();
+      const response = await axios.get(`${ENDPOINT}?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       const data = response.data.data || response.data;
@@ -111,12 +121,14 @@ export default function ResidentsScreen() {
   };
 
   /**
-   * Fetches available roles from dynamic API endpoint
+   * Fetches available roles from dynamic API endpoint.
+   * Added cache busting via timestamp.
    */
   const fetchRoles = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(ROLES_ENDPOINT, {
+      const t = new Date().getTime();
+      const response = await axios.get(`${ROLES_ENDPOINT}?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       setRoles(response.data);

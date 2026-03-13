@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react'; // Added useCallback
 import { 
   StyleSheet, View, ScrollView, TouchableOpacity, ActivityIndicator, 
   Alert, Platform 
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'; // Added useFocusEffect
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -49,9 +49,14 @@ export default function CreatePaymentScreen() {
     { v: 9, l: 'Sep' }, { v: 10, l: 'Oct' }, { v: 11, l: 'Nov' }, { v: 12, l: 'Dic' }
   ];
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
+  /**
+   * 🛡️ FOCUS LOAD: Re-fetches initial data whenever the screen is focused.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      fetchInitialData();
+    }, [addressId])
+  );
 
   // Refresh payment status when year or fee type changes
   useEffect(() => {
@@ -60,16 +65,17 @@ export default function CreatePaymentScreen() {
 
   /**
    * Loads the property address details and available fee types from the API.
+   * Added cache busting via timestamp.
    */
   const fetchInitialData = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
+      const t = new Date().getTime();
       const config = { headers: { Authorization: `Bearer ${token}` } };
       
-      // Using dynamic API_BASE for both requests
       const [resAddr, resFees] = await Promise.all([
-        axios.get(`${API_BASE}/addresses/${addressId}`, config),
-        axios.get(`${API_BASE}/fees`, config)
+        axios.get(`${API_BASE}/addresses/${addressId}?t=${t}`, config),
+        axios.get(`${API_BASE}/fees?t=${t}`, config)
       ]);
       setAddress(resAddr.data.data);
       setFees(resFees.data.data.filter((f: any) => !f.deleted_at));
@@ -82,11 +88,13 @@ export default function CreatePaymentScreen() {
 
   /**
    * Fetches the list of months already paid for the selected year and fee.
+   * Uses cache busting to ensure accurate payment status.
    */
   const fetchPaidMonths = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/address_payments/paid-months/${addressId}/${year}?fee_id=${feeId}`, {
+      const t = new Date().getTime();
+      const res = await axios.get(`${API_BASE}/address_payments/paid-months/${addressId}/${year}?fee_id=${feeId}&t=${t}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPaidMonths(res.data.months || []);

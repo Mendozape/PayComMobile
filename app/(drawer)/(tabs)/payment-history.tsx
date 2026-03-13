@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react'; // Added useCallback
 import { 
   StyleSheet, View, FlatList, ActivityIndicator, TouchableOpacity, 
   Alert, Modal, TextInput 
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router'; // Added useFocusEffect
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -29,16 +29,29 @@ export default function PaymentHistoryScreen() {
   const [reason, setReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch payment history on component mount
-  useEffect(() => { fetchHistory(); }, []);
+  /**
+   * 🛡️ FOCUS LOAD: Re-fetches history every time the screen is focused.
+   * This ensures newly created payments from CreatePaymentScreen appear here.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistory();
+      
+      return () => {
+        // Optional cleanup
+      };
+    }, [addressId])
+  );
 
   /**
    * Retrieves the full history from the API using dynamic base URL.
+   * Added cache busting via timestamp.
    */
   const fetchHistory = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/address_payments/history/${addressId}`, {
+      const t = new Date().getTime();
+      const res = await axios.get(`${API_BASE}/address_payments/history/${addressId}?t=${t}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPayments(res.data.data || res.data);

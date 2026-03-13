@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
 import { 
   StyleSheet, View, ScrollView, TouchableOpacity, 
   ActivityIndicator, Alert, Modal, FlatList 
@@ -6,6 +6,7 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons'; 
+import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 // Import dynamic API_BASE from your centralized configuration
 import { API_BASE } from '../../../src/api/axios'; 
@@ -15,9 +16,7 @@ import { ThemedView } from '@/components/themed-view';
 
 /**
  * ReportsScreen Component
- * Mobile report generator with status highlights:
- * - Red card background for properties with debt.
- * - Solid red box with white 'X' for overdue months.
+ * Mobile report generator with status highlights.
  */
 export default function ReportsScreen() {
   const today = new Date();
@@ -39,22 +38,28 @@ export default function ReportsScreen() {
   const monthAbbr = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
   const availableYears = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
 
-  useEffect(() => {
-    fetchFees();
-  }, []);
-
-  // Automatically refresh report when filters change
-  useEffect(() => {
-    if (paymentType) fetchReport();
-  }, [paymentType, ingresoYear]);
+  /**
+   * 🛡️ FOCUS LOAD: Refreshes report data and fees whenever the screen gains focus.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      fetchFees();
+      if (paymentType) fetchReport();
+      
+      return () => {
+        // Optional cleanup
+      };
+    }, [paymentType, ingresoYear])
+  );
 
   /**
-   * Fetches available fee types from the server using dynamic API_BASE.
+   * Fetches available fee types with cache busting.
    */
   const fetchFees = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_BASE}/fees`, {
+      const t = new Date().getTime();
+      const res = await axios.get(`${API_BASE}/fees?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       setFees(res.data.data || []);
@@ -62,14 +67,15 @@ export default function ReportsScreen() {
   };
 
   /**
-   * Retrieves the debtors report from the API based on selected filters.
+   * Retrieves the debtors report with cache busting.
    */
   const fetchReport = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
+      const t = new Date().getTime();
       const res = await axios.get(
-        `${API_BASE}/reports/debtors?payment_type=${encodeURIComponent(paymentType)}&year=${ingresoYear}`, 
+        `${API_BASE}/reports/debtors?payment_type=${encodeURIComponent(paymentType)}&year=${ingresoYear}&t=${t}`, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const cleanData = Array.isArray(res.data.data) ? res.data.data : [];
@@ -80,7 +86,7 @@ export default function ReportsScreen() {
   };
 
   /**
-   * Logic to determine the total overdue months (Historical + Selected Year).
+   * Logic to determine the total overdue months.
    */
   const getOverdueTotal = (item: any) => {
     const historicalDebt = Number(item.months_overdue || 0);
@@ -106,7 +112,7 @@ export default function ReportsScreen() {
   );
 
   /**
-   * Renders each individual property card with its payment grid.
+   * Renders each individual property card.
    */
   const renderDebtItem = (item: any, index: number) => {
     const overdueCount = getOverdueTotal(item);
@@ -133,7 +139,7 @@ export default function ReportsScreen() {
             const isTrulyOverdue = (ingresoYear < currentYear) || (ingresoYear === currentYear && m < currentMonthNum);
 
             let boxStyle = styles.statusBox;
-            let iconColor = "#dc3545"; // Default red
+            let iconColor = "#dc3545"; 
             let iconName: any = "times-circle";
 
             if (isPaid) {
@@ -148,7 +154,7 @@ export default function ReportsScreen() {
               }
             } else if (isTrulyOverdue) {
               boxStyle = [styles.statusBox, styles.boxUnpaidSolid];
-              iconColor = "white"; // White 'X' for high visibility
+              iconColor = "white"; 
               iconName = "times-circle";
             } else {
               boxStyle = [styles.statusBox, styles.boxFuture];
@@ -202,7 +208,7 @@ export default function ReportsScreen() {
         )}
       </ScrollView>
 
-      {/* Generic Modal for all selectors */}
+      {/* Modal for all selectors */}
       <Modal visible={!!activeModal} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setActiveModal(null)} activeOpacity={1}>
           <View style={styles.modalContent}>

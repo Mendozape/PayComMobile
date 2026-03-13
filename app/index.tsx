@@ -5,6 +5,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import LoginScreen from '../src/screens/LoginScreen'; 
 
+// Import the dynamic API_BASE from your centralized configuration
+import { API_BASE } from '../src/api/axios'; 
+
+/**
+ * RootIndex Component
+ * Acts as the entry point gatekeeper to determine authentication state.
+ */
 export default function RootIndex() {
   const router = useRouter();
   const [isCheckingSession, setIsCheckingSession] = useState(true);
@@ -17,14 +24,13 @@ export default function RootIndex() {
         
         if (isLoggedIn === 'true' && token) {
           /**
-           * CRITICAL CHANGE: We MUST wait for the user data here.
-           * This ensures the photo is saved in AsyncStorage BEFORE
-           * the TabLayout component tries to read it.
+           * 🛡️ SESSION RECOVERY: We fetch user data to ensure valid credentials
+           * and persist the profile photo before the UI renders.
            */
           await fetchUserPhoto(token); 
           
-          // Now it is safe to move to home
-          router.replace('/(tabs)/home');
+          // Navigation happens only after critical data is fetched or timed out
+          router.replace('/(drawer)/(tabs)/home');
         }
       } catch (e) {
         console.error("Session check error:", e);
@@ -37,36 +43,40 @@ export default function RootIndex() {
   }, []);
 
   /**
-   * Function to download and persist user photo
+   * Function to download and persist user photo using dynamic API_BASE
    */
   const fetchUserPhoto = async (token: string) => {
     try {
-      const response = await axios.get('http://192.168.1.16:8000/api/user', {
+      // Use dynamic ENDPOINT instead of hardcoded local IP
+      const response = await axios.get(`${API_BASE}/user`, {
         headers: { 
           Authorization: `Bearer ${token}`,
           Accept: 'application/json' 
         },
-        timeout: 5000 // Give it up to 5 seconds to respond
+        timeout: 5000 // Prevents the app from getting stuck on splash screen
       });
 
       if (response.data.profile_photo_path) {
-        const photoUrl = `http://192.168.1.16:8000/storage/images/${response.data.profile_photo_path}`;
-        // Save to storage BEFORE navigation happens
+        // Construct URL based on the environment (Dev or Production)
+        const baseUrl = API_BASE.replace('/api', '');
+        const photoUrl = `${baseUrl}/storage/images/${response.data.profile_photo_path}`;
+        
+        // Persist to storage BEFORE navigation happens
         await AsyncStorage.setItem('userProfilePhoto', photoUrl);
       }
     } catch (apiError) {
       /**
-       * If the network is slow or fails, we still let the user in.
-       * They just won't see their photo until the next successful sync.
+       * Silent fail: if network is down or API is slow, 
+       * proceed to Home to allow offline interaction if possible.
        */
-      console.log("Photo sync failed or timed out, proceeding anyway.");
+      console.log("Profile data sync failed, proceeding to dashboard.");
     }
   };
 
   if (isCheckingSession) {
     return (
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#28a745" />
       </View>
     );
   }

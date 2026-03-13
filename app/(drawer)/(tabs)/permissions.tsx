@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // Added useCallback
 import { 
   StyleSheet, 
   FlatList, 
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios'; 
@@ -53,22 +54,29 @@ export default function PermissionsScreen() {
   const [permissionName, setPermissionName] = useState('');
 
   /**
-   * Initial data load on mount.
+   * 🛡️ FOCUS LOAD: Re-fetches permissions every time the screen is focused.
    */
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        const jsonValue = await AsyncStorage.getItem('userData');
-        if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
-        await fetchPermissions();
-      } catch (e) {
-        console.error("Initialization Error:", e);
-      } finally {
-        setIsReady(true);
-      }
-    };
-    initialize();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const initialize = async () => {
+        try {
+          const jsonValue = await AsyncStorage.getItem('userData');
+          if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
+          // Perform fresh fetch from dynamic endpoint
+          await fetchPermissions();
+        } catch (e) {
+          console.error("Initialization Error:", e);
+        } finally {
+          setIsReady(true);
+        }
+      };
+      initialize();
+
+      return () => {
+        // Optional cleanup
+      };
+    }, [])
+  );
 
   const { can } = usePermission(currentUser);
   const canCreate = can('Crear-permisos');
@@ -77,12 +85,14 @@ export default function PermissionsScreen() {
 
   /**
    * Fetches the permissions list from the dynamic endpoint.
+   * Added cache busting via timestamp.
    */
   const fetchPermissions = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(ENDPOINT, {
+      const t = new Date().getTime();
+      const response = await axios.get(`${ENDPOINT}?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       const data = response.data.data || response.data;

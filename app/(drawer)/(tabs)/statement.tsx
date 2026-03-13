@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
 import { 
   StyleSheet, View, ActivityIndicator, 
   TouchableOpacity, ScrollView, Modal, FlatList 
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/(tabs)/
 import { API_BASE } from '../../../src/api/axios';
@@ -36,21 +37,30 @@ export default function StatementScreen() {
     { v: 10, l: 'Octubre' }, { v: 11, l: 'Noviembre' }, { v: 12, l: 'Diciembre' }
   ];
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  useEffect(() => {
-    if (addressDetails?.id) fetchStatement();
-  }, [year, addressDetails]);
+  /**
+   * 🛡️ FOCUS LOAD: Refreshes statement data every time the screen is focused.
+   * This ensures residents see their latest payments immediately.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      fetchInitialData();
+      
+      return () => {
+        // Optional cleanup
+      };
+    }, [year, addressDetails?.id])
+  );
 
   /**
    * Fetches user properties and validates 'ver-estado-cuenta' permission using dynamic API_BASE.
+   * Added cache busting via timestamp.
    */
   const fetchInitialData = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(`${API_BASE}/user`, {
+      const t = new Date().getTime();
+      
+      const response = await axios.get(`${API_BASE}/user?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       
@@ -63,14 +73,23 @@ export default function StatementScreen() {
 
       if (!perms.includes('ver-estado-cuenta')) {
         setIsAuthorized(false);
+        setLoading(false);
         return;
       }
 
       const userProperties = freshUser.addresses || (freshUser.address ? [freshUser.address] : []);
       if (userProperties.length > 0) {
         setAllAddresses(userProperties);
-        setAddressDetails(userProperties[0]);
+        // Only set default if not already selected to avoid overwriting during focus refreshes
+        if (!addressDetails) {
+          setAddressDetails(userProperties[0]);
+        }
       }
+
+      if (addressDetails?.id) {
+        await fetchStatement();
+      }
+      
     } catch (error) {
       console.error("Fetch initial error:", error);
     } finally {
@@ -80,12 +99,15 @@ export default function StatementScreen() {
 
   /**
    * Fetches the specific payment history for the selected address/year combination.
+   * Added cache busting via timestamp.
    */
   const fetchStatement = async () => {
+    if (!addressDetails?.id) return;
     try {
       const token = await AsyncStorage.getItem('userToken');
+      const t = new Date().getTime();
       const response = await axios.get(
-        `${API_BASE}/address_payments/paid-months/${addressDetails.id}/${year}`,
+        `${API_BASE}/address_payments/paid-months/${addressDetails.id}/${year}?t=${t}`,
         { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
       );
       setPaidMonths(response.data.months || []);

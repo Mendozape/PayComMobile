@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
 import { 
   StyleSheet, 
   TouchableOpacity, 
@@ -10,7 +10,7 @@ import {
   Modal, 
   DeviceEventEmitter 
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // Added useFocusEffect
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
@@ -41,46 +41,59 @@ export default function ProfileScreen() {
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   
   // Media and loading states
-  const [imageUri, setImageUri] = useState(null);
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true); 
   const [isUploading, setIsUploading] = useState(false); 
 
   /**
-   * Fetch user data from the API on mount using dynamic API_BASE
+   * 🛡️ FOCUS LOAD: Refreshes user data whenever the screen is focused.
+   * This ensures the profile reflects the latest server-side state.
    */
-  useEffect(() => {
-    const fetchUserData = async () => {
-      setIsLoading(true);
-      try {
-        const token = await AsyncStorage.getItem('userToken');
-        // Fetch user data using centralized dynamic URL
-        const response = await axios.get(`${API_BASE}/user`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-        });
+  useFocusEffect(
+    useCallback(() => {
+      fetchUserData();
+      
+      return () => {
+        // Optional cleanup
+      };
+    }, [])
+  );
+
+  /**
+   * Fetch user data from the API using dynamic API_BASE.
+   * Added cache busting for the profile photo.
+   */
+  const fetchUserData = async () => {
+    setIsLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const t = new Date().getTime(); // Cache buster
+      
+      const response = await axios.get(`${API_BASE}/user?t=${t}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+      });
+      
+      setName(response.data.name);
+      setEmail(response.data.email);
+      setPhone(response.data.phone || ''); 
+      
+      // Construct profile photo URL based on the current environment (Dev/Prod)
+      if (response.data.profile_photo_path) {
+        const baseUrl = API_BASE.replace('/api', '');
+        const photoUrl = `${baseUrl}/storage/images/${response.data.profile_photo_path}`;
         
-        setName(response.data.name);
-        setEmail(response.data.email);
-        setPhone(response.data.phone || ''); 
-        
-        // Construct profile photo URL based on the current environment (Dev/Prod)
-        if (response.data.profile_photo_path) {
-          const baseUrl = API_BASE.replace('/api', '');
-          const photoUrl = `${baseUrl}/storage/images/${response.data.profile_photo_path}`;
-          
-          // Add cache buster to initial load
-          const freshUrl = `${photoUrl}?t=${Date.now()}`;
-          setImageUri(freshUrl);
-          await AsyncStorage.setItem('userProfilePhoto', photoUrl);
-        }
-      } catch (error) {
-        console.error("Fetch Error:", error);
-        Alert.alert("Error", "Could not retrieve user information.");
-      } finally {
-        setIsLoading(false);
+        // Force refresh by adding timestamp
+        const freshUrl = `${photoUrl}?t=${t}`;
+        setImageUri(freshUrl);
+        await AsyncStorage.setItem('userProfilePhoto', photoUrl);
       }
-    };
-    fetchUserData();
-  }, []);
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      Alert.alert("Error", "Could not retrieve user information.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   /**
    * Open gallery to pick a profile image

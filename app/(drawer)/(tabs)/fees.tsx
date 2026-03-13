@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // Added useCallback
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios';
@@ -56,23 +57,29 @@ export default function FeesScreen() {
   const [deactivationReason, setDeactivationReason] = useState<string>(''); 
 
   /**
-   * Initial data load: User profile and fees catalog using dynamic endpoints.
+   * 🛡️ FOCUS LOAD: Refreshes fees catalog every time the screen is focused.
    */
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        const jsonValue = await AsyncStorage.getItem('userData');
-        if (jsonValue) setUser(JSON.parse(jsonValue));
-        // Perform initial fetch from dynamic endpoint
-        await fetchFees();
-      } catch (e) {
-        console.error("Initialization Error:", e);
-      } finally {
-        setIsReady(true);
-      }
-    };
-    initialize();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const initialize = async () => {
+        try {
+          const jsonValue = await AsyncStorage.getItem('userData');
+          if (jsonValue) setUser(JSON.parse(jsonValue));
+          // Perform fresh fetch from dynamic endpoint
+          await fetchFees();
+        } catch (e) {
+          console.error("Initialization Error:", e);
+        } finally {
+          setIsReady(true);
+        }
+      };
+      initialize();
+
+      return () => {
+        // Optional cleanup
+      };
+    }, [])
+  );
 
   const { can } = usePermission(user);
   const canCreate = can('Crear-cuotas');
@@ -81,12 +88,14 @@ export default function FeesScreen() {
 
   /**
    * Data fetching logic using the dynamic API_BASE.
+   * Added cache busting via timestamp.
    */
   const fetchFees = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await axios.get(ENDPOINT, {
+      const t = new Date().getTime();
+      const response = await axios.get(`${ENDPOINT}?t=${t}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       const data = response.data.data || response.data;
