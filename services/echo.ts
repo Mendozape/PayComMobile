@@ -2,49 +2,63 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// IMPORT: Adjust the relative path to your axios configuration file
+import Config from '../constants/Config'; // Global app config (ENV, prefixes, etc.)
 import { API_BASE } from '../src/api/axios'; 
 
 let echoInstance: Echo<any> | null = null;
 
 /**
- * Initializes the Echo instance as a singleton.
- * This prevents multiple socket connections that lead to memory leaks and duplicate events.
+ * Initializes a singleton Echo instance.
+ * Prevents multiple socket connections and duplicated listeners.
  */
 export const initEcho = async (): Promise<Echo<any> | null> => {
   try {
     const token = await AsyncStorage.getItem('userToken');
     if (!token) return null;
 
-    // Check if instance already exists and is connected to avoid redundant connections
-    if (echoInstance && echoInstance.connector.pusher.connection.state === 'connected') {
+    // Avoid reconnecting if already connected
+    if (
+      echoInstance &&
+      echoInstance.connector.pusher.connection.state === 'connected'
+    ) {
       return echoInstance;
     }
 
-    // Disconnect any existing stale instance
+    // Clean up any stale instance
     if (echoInstance) {
       echoInstance.disconnect();
     }
 
-    // Attach Pusher to global scope as required by Laravel Echo
+    // Required by Laravel Echo (React Native environment)
     (global as any).Pusher = Pusher;
 
     echoInstance = new Echo({
       broadcaster: 'pusher',
       key: '66e12194484209bfb23d',
       cluster: 'mt1',
-      // SET TO TRUE: Required for secure WSS connections on production domains (SSL)
-      forceTLS: true, 
+      forceTLS: Config.ENV === 'prod', 
       disableStats: true,
-      // DYNAMIC ENDPOINT: Uses API_BASE to automatically switch between local IP and production domain.
-      // This solves the BlueStacks connectivity issue by pointing to the correct environment.
+
+      // Dynamic API endpoint (works for both dev and production)
       authEndpoint: `${API_BASE}/broadcasting/auth`,
+
       auth: {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
         },
       },
+    });
+
+    /**
+     * Debug listeners (very useful in production debugging)
+     */
+    echoInstance.connector.pusher.connection.bind('connected', () => {
+      console.log('✅ [ECHO] Connected');
+    });
+
+    echoInstance.connector.pusher.connection.bind('error', (err: any) => {
+      console.log('❌ [ECHO ERROR]', err);
     });
 
     return echoInstance;
@@ -55,12 +69,25 @@ export const initEcho = async (): Promise<Echo<any> | null> => {
 };
 
 /**
+ * Generates a prefixed channel name.
+ * Ensures environment isolation between dev and production.
+ *
+ * Example:
+ * dev  -> dev_chat.1.2
+ * prod -> prod_chat.1.2
+ */
+export const getPrefixedChannel = (channel: string): string => {
+  const prefix = Config.getChannelPrefix();
+  return `${prefix}${channel}`;
+};
+
+/**
  * Returns the current active Echo instance.
  */
 export const getEcho = () => echoInstance;
 
 /**
- * Gracefully disconnects and clears the Echo instance.
+ * Gracefully disconnects Echo and clears the instance.
  */
 export const disconnectEcho = () => {
   if (echoInstance) {

@@ -6,6 +6,8 @@ import React, { useEffect } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initEcho } from '@/services/echo';
+// IMPORT: Centralized configuration to handle environment prefixes
+import Config from '@/constants/Config';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -18,8 +20,15 @@ export default function RootLayout() {
       if (echo && userData) {
         const user = JSON.parse(userData);
         
-        // Listen to personal notification channel and broadcast to entire app
-        echo.private(`App.Models.User.${user.id}`)
+        // Get the environment prefix ('dev_' or 'prod_') from Config.js
+        const prefix = Config.getChannelPrefix();
+
+        /**
+         * Listen to personal notification channel using the environment prefix.
+         * This ensures that production events from the live domain do not 
+         * trigger listeners or counters on local development devices.
+         */
+        echo.private(`${prefix}App.Models.User.${user.id}`)
           .stopListening('.MessageSent')
           .listen('.MessageSent', (e: any) => {
             DeviceEventEmitter.emit('new-message-received', e);

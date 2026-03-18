@@ -36,6 +36,16 @@ const Config = {
         }
         // Development format: http://192.168.1.XX:8000/api
         return `${this.development.PROTOCOL}://${this.development.PC_IP}:${this.development.PORT}/api`;
+    },
+
+    /**
+     * PUSHER CHANNEL PREFIX GENERATOR
+     * Ensures real-time events from production do not leak into local devices.
+     * Use this in echo.ts and screen listeners to prefix channel names.
+     */
+    getChannelPrefix() {
+        // Returns 'prod_' for production and 'dev_' for development
+        return this.ENV === 'prod' ? 'prod_' : 'dev_';
     }
 };
 

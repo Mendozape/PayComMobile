@@ -4,18 +4,13 @@ import { useLocalSearchParams, Stack, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Corrected relative path to reach src/api/axios from app/(drawer)/(tabs)/chat/
 import { API_BASE } from '../../../../src/api/axios'; 
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { getEcho, initEcho } from '@/services/echo';
+import { getEcho, initEcho, getPrefixedChannel } from '@/services/echo'; // ✅ IMPORT
 
-/**
- * ChatDetailScreen Component
- * Provides a real-time messaging interface between users.
- */
 export default function ChatDetailScreen() {
   const { id, name } = useLocalSearchParams();
   const [messages, setMessages] = useState([]);
@@ -23,21 +18,15 @@ export default function ChatDetailScreen() {
   const [message, setMessage] = useState('');
   const [isOtherTyping, setIsOtherTyping] = useState(false);
 
-  const currentUserRef = useRef(null);
+  const currentUserRef = useRef<any>(null);
   const lastTypingSent = useRef(0);
-  const typingTimeoutRef = useRef(null);
-  const channelRef = useRef(null);
+  const typingTimeoutRef = useRef<any>(null);
+  const channelRef = useRef<any>(null);
   const echoSetupDone = useRef(false);
 
-  /**
-   * Fetches messages and marks them as read on focus.
-   * Uses DeviceEventEmitter to inform the app that this specific chat is active.
-   */
   useFocusEffect(
     React.useCallback(() => {
       DeviceEventEmitter.emit('chat-active', true);
-      
-      // Fetch fresh messages every time screen focuses using dynamic API_BASE
       fetchMessages();
       
       return () => {
@@ -46,9 +35,6 @@ export default function ChatDetailScreen() {
     }, [id])
   );
 
-  /**
-   * Sets up real-time listeners using Laravel Echo and dynamic channels.
-   */
   useEffect(() => {
     let msgSub: any;
 
@@ -56,15 +42,22 @@ export default function ChatDetailScreen() {
       const userData = await AsyncStorage.getItem('userData');
       if (userData) currentUserRef.current = JSON.parse(userData);
 
-      // Set up Echo channel only once to avoid duplicate listeners
       if (!echoSetupDone.current) {
         const echo = getEcho() || await initEcho();
+
         if (echo && currentUserRef.current) {
-          const chatChannel = `chat.${[Number(currentUserRef.current.id), Number(id)].sort((a, b) => a - b).join('.')}`;
+          // ✅ FIX: SORT IDS + PREFIX
+          const ids = [
+            Number(currentUserRef.current.id),
+            Number(id)
+          ].sort((a, b) => a - b);
+
+          const chatChannel = getPrefixedChannel(`chat.${ids.join('.')}`);
+
+          console.log('🔥 SUBSCRIBING TO:', chatChannel);
 
           channelRef.current = echo.private(chatChannel);
 
-          // Listen for typing indicator
           channelRef.current
             .listen('.UserTyping', (e: any) => {
               if (Number(e.sender_id) === Number(id)) {
@@ -73,7 +66,6 @@ export default function ChatDetailScreen() {
                 typingTimeoutRef.current = setTimeout(() => setIsOtherTyping(false), 3000);
               }
             })
-            // Listen for message read receipts
             .listen('.MessageRead', (e: any) => {
               if (Number(e.reader_id) === Number(id)) {
                 setMessages(prev =>
@@ -83,18 +75,20 @@ export default function ChatDetailScreen() {
                   }))
                 );
               }
+            })
+            // ✅ EXTRA DEBUG (optional but useful)
+            .listen('.MessageSent', (e: any) => {
+              console.log('💬 DIRECT MESSAGE RECEIVED:', e);
             });
-          
+
           echoSetupDone.current = true;
         }
 
-        // Listen for new incoming messages emitted by the echo service
         msgSub = DeviceEventEmitter.addListener('new-message-received', (e: any) => {
           const senderId = e.message?.sender_id || e.sender_id;
 
           if (Number(senderId) === Number(id)) {
             setMessages(prev => {
-              // Prevent duplicates if the message was already added manually
               if (prev.find(m => m.id === e.message.id)) return prev;
               return [e.message, ...prev];
             });
@@ -118,14 +112,10 @@ export default function ChatDetailScreen() {
     };
   }, [id]);
 
-  /**
-   * Handles text input changes and sends typing indicator to backend via dynamic API_BASE.
-   */
   const handleTextChange = (text: string) => {
     setMessage(text);
 
     const now = Date.now();
-    // Throttle typing indicator to every 2.5 seconds to save server resources
     if (now - lastTypingSent.current > 2500 && text.length > 0) {
       lastTypingSent.current = now;
 
@@ -138,14 +128,10 @@ export default function ChatDetailScreen() {
     }
   };
 
-  /**
-   * Fetches message history and automatically marks messages as read.
-   */
   const fetchMessages = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       
-      // Use dynamic dynamic URL to fetch conversation history
       const res = await axios.get(`${API_BASE}/chat/messages/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -159,9 +145,6 @@ export default function ChatDetailScreen() {
     }
   };
 
-  /**
-   * Sends a new message to the API using dynamic API_BASE.
-   */
   const handleSend = async () => {
     if (!message.trim()) return;
 
@@ -176,7 +159,6 @@ export default function ChatDetailScreen() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Append own message immediately for better UX
       setMessages(prev => [res.data.message, ...prev]);
     } catch (e) {
       console.error("Send Message Error:", e);
@@ -216,7 +198,6 @@ export default function ChatDetailScreen() {
                   <ThemedText style={styles.time}>
                     {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </ThemedText>
-                  {/* Read receipt checkmarks */}
                   {isMe && <ThemedText style={styles.check}>{m.read_at ? ' ✓✓' : ' ✓'}</ThemedText>}
                 </View>
               </View>
@@ -224,14 +205,12 @@ export default function ChatDetailScreen() {
           }}
         />
 
-        {/* Real-time typing indicator */}
         {isOtherTyping && (
           <ThemedText style={styles.typingIndicator}>
             {name} está escribiendo...
           </ThemedText>
         )}
 
-        {/* Chat input footer */}
         <View style={styles.inputArea}>
           <TextInput
             style={styles.input}

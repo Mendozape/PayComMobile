@@ -17,13 +17,13 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
  */
 export default function ChatContactsScreen() {
   const router = useRouter();
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   
   const isFocusedRef = useRef(false);
-  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fetchTimeoutRef = useRef(null);
 
   /**
    * Fetches contact list with unread message counts from the server.
@@ -79,9 +79,15 @@ export default function ChatContactsScreen() {
         }, 1000);
       });
 
+      // ESTO ES LO UNICO QUE AGREGUÉ: Para que se limpie el badge cuando el otro file avisa
+      const readListener = DeviceEventEmitter.addListener('chat-messages-read', () => {
+        if (isFocusedRef.current) fetchContacts(true);
+      });
+
       return () => {
         isFocusedRef.current = false;
         msgListener.remove();
+        readListener.remove();
         
         if (fetchTimeoutRef.current) {
           clearTimeout(fetchTimeoutRef.current);
@@ -165,63 +171,13 @@ export default function ChatContactsScreen() {
 }
 
 const styles = StyleSheet.create({
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    margin: 15,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    height: 45
-  },
-  input: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-    color: '#000'
-  },
-  item: {
-    flexDirection: 'row',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    alignItems: 'center'
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#007bff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12
-  },
-  avatarText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 18
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000'
-  },
-  email: {
-    fontSize: 13,
-    color: '#888'
-  },
-  badge: {
-    backgroundColor: '#ff3b30',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6
-  },
-  badgeText: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: 'bold'
-  }
+  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', margin: 15, paddingHorizontal: 12, borderRadius: 10, height: 45 },
+  input: { flex: 1, marginLeft: 10, fontSize: 16, color: '#000' },
+  item: { flexDirection: 'row', padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
+  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#007bff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  avatarText: { color: 'white', fontWeight: 'bold', fontSize: 18 },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#000' },
+  email: { fontSize: 13, color: '#888' },
+  badge: { backgroundColor: '#ff3b30', borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
+  badgeText: { color: 'white', fontSize: 11, fontWeight: 'bold' }
 });
