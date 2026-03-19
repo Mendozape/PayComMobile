@@ -36,7 +36,7 @@ export const initEcho = async (): Promise<Echo<any> | null> => {
       broadcaster: 'pusher',
       key: '66e12194484209bfb23d',
       cluster: 'mt1',
-      forceTLS: Config.ENV === 'prod', 
+      forceTLS: Config.ENV === 'prod' ? true : false, 
       disableStats: true,
 
       // Dynamic API endpoint (works for both dev and production)

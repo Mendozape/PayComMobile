@@ -9,7 +9,7 @@ const Config = {
      * 'dev'  -> Use local development settings (PC_IP and PORT).
      * 'prod' -> Use production settings (DOMAIN and HTTPS).
      */
-    ENV: 'prod', 
+    ENV: 'dev', 
 
     // Settings for local development (XAMPP / Artisan Serve)
     development: {
