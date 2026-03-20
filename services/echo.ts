@@ -2,7 +2,7 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import Config from '../constants/Config'; // Global app config (ENV, prefixes, etc.)
+import Config from '../constants/Config'; 
 import { API_BASE } from '../src/api/axios'; 
 
 let echoInstance: Echo<any> | null = null;
@@ -16,7 +16,7 @@ export const initEcho = async (): Promise<Echo<any> | null> => {
     const token = await AsyncStorage.getItem('userToken');
     if (!token) return null;
 
-    // Avoid reconnecting if already connected
+    // Avoid reconnecting if already connected and active
     if (
       echoInstance &&
       echoInstance.connector.pusher.connection.state === 'connected'
@@ -46,24 +46,26 @@ export const initEcho = async (): Promise<Echo<any> | null> => {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
+          /**
+           * Critical header for Laravel Sanctum/CORS to 
+           * recognize the request as an AJAX/API call.
+           */
+          'X-Requested-With': 'XMLHttpRequest',
         },
       },
     });
 
-    /**
-     * Debug listeners (very useful in production debugging)
-     */
+    // Lifecycle event binders without console logs
     echoInstance.connector.pusher.connection.bind('connected', () => {
-      console.log('✅ [ECHO] Connected');
+      // Socket connected
     });
 
     echoInstance.connector.pusher.connection.bind('error', (err: any) => {
-      console.log('❌ [ECHO ERROR]', err);
+      // Socket error handling
     });
 
     return echoInstance;
   } catch (error) {
-    console.error('❌ [ECHO] Critical Initialization Error', error);
     return null;
   }
 };
@@ -71,10 +73,6 @@ export const initEcho = async (): Promise<Echo<any> | null> => {
 /**
  * Generates a prefixed channel name.
  * Ensures environment isolation between dev and production.
- *
- * Example:
- * dev  -> dev_chat.1.2
- * prod -> prod_chat.1.2
  */
 export const getPrefixedChannel = (channel: string): string => {
   const prefix = Config.getChannelPrefix();

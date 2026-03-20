@@ -78,7 +78,7 @@ export default function ChatDetailScreen() {
             })
             // ✅ EXTRA DEBUG (optional but useful)
             .listen('.MessageSent', (e: any) => {
-              console.log('💬 DIRECT MESSAGE RECEIVED:', e);
+              //console.log('💬 DIRECT MESSAGE RECEIVED:', e);
             });
 
           echoSetupDone.current = true;

@@ -155,7 +155,7 @@ const LoginScreen = () => {
                             <View style={styles.formContainer}>
                                 {/* Brand Header */}
                                 <Text style={styles.brandText}>Prados de la Huerta</Text>
-                                <Text style={styles.welcomeText}>¡Bienvenido!</Text>
+                                <Text style={styles.welcomeText}>Bienvenido</Text>
                                 
                                 <View style={styles.inputContainer}>
                                     <TextInput 
