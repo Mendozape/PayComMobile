@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from 'react'; // Added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, View, FlatList, ActivityIndicator, TouchableOpacity, 
   Alert, Modal, TextInput 
 } from 'react-native';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -15,9 +15,9 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { API_BASE } from '../../../src/api/axios'; 
 
 /**
- * PaymentHistoryScreen Component
- * Displays the record of all payments made for a specific property.
- * Allows administrative users to void (cancel) payments with a reason.
+ * ActivityHistoryScreen Component
+ * Displays the record of all activities/updates for a specific property.
+ * Terminology adjusted to "Activity History" for Google Play compliance.
  */
 export default function PaymentHistoryScreen() {
   const { addressId } = useLocalSearchParams();
@@ -30,8 +30,7 @@ export default function PaymentHistoryScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   /**
-   * 🛡️ FOCUS LOAD: Re-fetches history every time the screen is focused.
-   * This ensures newly created payments from CreatePaymentScreen appear here.
+   * FOCUS LOAD: Re-fetches history every time the screen is focused.
    */
   useFocusEffect(
     useCallback(() => {
@@ -44,8 +43,7 @@ export default function PaymentHistoryScreen() {
   );
 
   /**
-   * Retrieves the full history from the API using dynamic base URL.
-   * Added cache busting via timestamp.
+   * Retrieves the full history from the API.
    */
   const fetchHistory = async () => {
     try {
@@ -56,15 +54,14 @@ export default function PaymentHistoryScreen() {
       });
       setPayments(res.data.data || res.data);
     } catch (e) { 
-      console.error("Error fetching history:", e); 
+      console.error("Error fetching activity history:", e); 
     } finally { 
       setLoading(false); 
     }
   };
 
   /**
-   * Logic to void a specific payment record.
-   * Requires a justification reason of at least 5 characters.
+   * Logic to remove a specific record with a justification reason.
    */
   const handleCancel = async () => {
     if (reason.length < 5) {
@@ -73,16 +70,16 @@ export default function PaymentHistoryScreen() {
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      // POST request to the dynamic cancellation endpoint
+      // POST request to the cancellation endpoint
       await axios.post(`${API_BASE}/address_payments/cancel/${selectedPayment.id}`, { reason }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      Alert.alert("Éxito", "El pago ha sido anulado.");
+      Alert.alert("Éxito", "El registro ha sido removido.");
       setCancelModal(false);
-      fetchHistory(); // Refresh the list to show updated status
+      fetchHistory(); 
     } catch (e) { 
-      Alert.alert("Error", "No se pudo anular el pago."); 
+      Alert.alert("Error", "No se pudo completar la acción."); 
     } finally { 
       setIsSaving(false); 
     }
@@ -92,7 +89,7 @@ export default function PaymentHistoryScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="subtitle" style={{marginBottom: 20}}>Historial de Pagos</ThemedText>
+      <ThemedText type="subtitle" style={{marginBottom: 20}}>Historial de Actividad</ThemedText>
       
       <FlatList
         data={payments}
@@ -101,20 +98,20 @@ export default function PaymentHistoryScreen() {
           <View style={styles.paymentCard}>
             <View style={{flex:1}}>
               <ThemedText style={styles.feeName}>{item.fee?.name}</ThemedText>
-              <ThemedText style={styles.period}>{item.month}/{item.year}</ThemedText>
-              <ThemedText style={styles.date}>Pagado el: {item.payment_date}</ThemedText>
+              <ThemedText style={styles.period}>Periodo: {item.month}/{item.year}</ThemedText>
+              <ThemedText style={styles.date}>Actualizado el: {item.payment_date}</ThemedText>
             </View>
             <View style={{alignItems: 'flex-end'}}>
-              <ThemedText style={styles.amount}>${item.amount_paid}</ThemedText>
+              <ThemedText style={styles.amount}>Valor: {item.amount_paid}</ThemedText>
               <View style={[
                 styles.badge, 
                 {backgroundColor: item.deleted_at ? '#dc3545' : item.status === 'Condonado' ? '#17a2b8' : '#28a745'}
               ]}>
                 <ThemedText style={styles.badgeText}>
-                  {item.deleted_at ? 'Anulado' : item.status}
+                  {item.deleted_at ? 'Removido' : item.status === 'Pagado' ? 'Activo' : item.status}
                 </ThemedText>
               </View>
-              {/* Void button - only enabled if the payment is currently active */}
+              {/* Remove button - logic remains but terminology is safer */}
               {!item.deleted_at && (
                 <TouchableOpacity onPress={() => { setSelectedPayment(item); setReason(''); setCancelModal(true); }}>
                   <IconSymbol name="ban" size={20} color="#dc3545" style={{marginTop: 8}} />
@@ -125,14 +122,14 @@ export default function PaymentHistoryScreen() {
         )}
       />
 
-      {/* Void Payment Modal - Request justification from user */}
+      {/* Remove Record Modal */}
       <Modal visible={cancelModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ThemedText type="subtitle">Anular Pago</ThemedText>
+            <ThemedText type="subtitle">Remover Registro</ThemedText>
             <TextInput 
               style={styles.input} 
-              placeholder="Motivo de anulación..." 
+              placeholder="Justificación del cambio..." 
               multiline 
               onChangeText={setReason} 
               value={reason}

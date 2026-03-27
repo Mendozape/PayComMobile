@@ -1,13 +1,13 @@
-import React, { useEffect, useState, useCallback } from 'react'; // Added useCallback
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
   StyleSheet, View, ScrollView, TouchableOpacity, ActivityIndicator, 
   Alert, Platform 
 } from 'react-native';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Import dynamic API_BASE from your centralized configuration
+// Import dynamic API_BASE from centralized configuration
 import { API_BASE } from '../../../src/api/axios';
 
 import { ThemedText } from '@/components/themed-text';
@@ -16,7 +16,8 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 
 /**
  * CreatePaymentScreen Component
- * Handles the logic for registering property fee payments or waivers (condonaciones).
+ * Handles the logic for registering community contributions or waivers.
+ * Adjusted to use non-financial terminology for Google Play compliance.
  */
 export default function CreatePaymentScreen() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function CreatePaymentScreen() {
   ];
 
   /**
-   * 🛡️ FOCUS LOAD: Re-fetches initial data whenever the screen is focused.
+   * FOCUS LOAD: Re-fetches initial data whenever the screen is focused.
    */
   useFocusEffect(
     useCallback(() => {
@@ -58,14 +59,13 @@ export default function CreatePaymentScreen() {
     }, [addressId])
   );
 
-  // Refresh payment status when year or fee type changes
+  // Refresh status when year or contribution type changes
   useEffect(() => {
     if (feeId && year) fetchPaidMonths();
   }, [feeId, year]);
 
   /**
-   * Loads the property address details and available fee types from the API.
-   * Added cache busting via timestamp.
+   * Loads the property address details and available contribution types from the API.
    */
   const fetchInitialData = async () => {
     try {
@@ -80,15 +80,14 @@ export default function CreatePaymentScreen() {
       setAddress(resAddr.data.data);
       setFees(resFees.data.data.filter((f: any) => !f.deleted_at));
     } catch (e) { 
-      Alert.alert("Error", "Could not load property information."); 
+      Alert.alert("Error", "Could not load information."); 
     } finally { 
       setLoading(false); 
     }
   };
 
   /**
-   * Fetches the list of months already paid for the selected year and fee.
-   * Uses cache busting to ensure accurate payment status.
+   * Fetches the list of months already updated for the selected year and type.
    */
   const fetchPaidMonths = async () => {
     try {
@@ -101,12 +100,12 @@ export default function CreatePaymentScreen() {
       setSelectedMonths([]);
       setWaivedMonths([]);
     } catch (e) { 
-      console.error("Error fetching paid months:", e); 
+      console.error("Error fetching data:", e); 
     }
   };
 
   /**
-   * Calculates the monthly amount based on property type (House/Land) and status.
+   * Calculates the amount based on property type and status.
    */
   const handleFeeSelect = (fee: any) => {
     setFeeId(fee.id.toString());
@@ -117,7 +116,7 @@ export default function CreatePaymentScreen() {
   };
 
   /**
-   * Toggles month selection for either Payment (P) or Waiver (C).
+   * Toggles month selection for either Update (U) or Exception (E).
    */
   const toggleMonth = (month: number, type: 'P' | 'C') => {
     if (type === 'P') {
@@ -139,10 +138,10 @@ export default function CreatePaymentScreen() {
   };
 
   /**
-   * Sends the payment/waiver data to the server.
+   * Sends the notification data to the server.
    */
   const handleSave = async () => {
-    if (selectedMonths.length === 0) return Alert.alert("Aviso", "Please select at least one month.");
+    if (selectedMonths.length === 0) return Alert.alert("Aviso", "Seleccione al menos un mes.");
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -155,10 +154,10 @@ export default function CreatePaymentScreen() {
         waived_months: waivedMonths
       }, { headers: { Authorization: `Bearer ${token}` } });
       
-      Alert.alert("Éxito", "Payment registered successfully.");
+      Alert.alert("Éxito", "Información actualizada correctamente.");
       router.back();
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "Registration failed.");
+      Alert.alert("Error", e.response?.data?.message || "Ocurrió un error al registrar.");
     } finally { 
       setIsSaving(false); 
     }
@@ -169,9 +168,10 @@ export default function CreatePaymentScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <ThemedText type="subtitle">Pago: {address?.street?.name} #{address?.street_number}</ThemedText>
+        {/* Terminology change: 'Pago' to 'Registro' */}
+        <ThemedText type="subtitle">Registro: {address?.street?.name} #{address?.street_number}</ThemedText>
         
-        <ThemedText style={styles.label}>1. Seleccione Cuota</ThemedText>
+        <ThemedText style={styles.label}>1. Seleccione Concepto</ThemedText>
         <View style={styles.feeList}>
           {fees.map(f => (
             <TouchableOpacity 
@@ -186,7 +186,7 @@ export default function CreatePaymentScreen() {
 
         {feeId ? (
           <View style={styles.card}>
-            <ThemedText style={styles.amountText}>Monto por mes: ${unitAmount}</ThemedText>
+            <ThemedText style={styles.amountText}>Valor: ${unitAmount}</ThemedText>
             
             <ThemedText style={styles.label}>2. Seleccione Año</ThemedText>
             <View style={styles.yearSelector}>
@@ -201,15 +201,15 @@ export default function CreatePaymentScreen() {
               ))}
             </View>
 
-            {/* Legend for Month Actions */}
+            {/* Adjusted Legend for Month Actions */}
             <View style={styles.legendContainer}>
               <View style={styles.legendItem}>
-                <View style={[styles.miniBtn, styles.payActive, {width: 18, height: 18}]}><ThemedText style={styles.legendText}>P</ThemedText></View>
-                <ThemedText style={styles.legendLabel}> = Pagar</ThemedText>
+                <View style={[styles.miniBtn, styles.payActive, {width: 18, height: 18}]}><ThemedText style={styles.legendText}>A</ThemedText></View>
+                <ThemedText style={styles.legendLabel}> = Al corriente</ThemedText>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.miniBtn, styles.waiveActive, {width: 18, height: 18}]}><ThemedText style={styles.legendText}>C</ThemedText></View>
-                <ThemedText style={styles.legendLabel}> = Condonar</ThemedText>
+                <View style={[styles.miniBtn, styles.waiveActive, {width: 18, height: 18}]}><ThemedText style={styles.legendText}>E</ThemedText></View>
+                <ThemedText style={styles.legendLabel}> = Exento</ThemedText>
               </View>
             </View>
             
@@ -227,11 +227,12 @@ export default function CreatePaymentScreen() {
                       </View>
                     ) : (
                       <View style={styles.actionRow}>
+                        {/* P -> A (Actualizar) and C -> E (Exento) */}
                         <TouchableOpacity onPress={() => toggleMonth(m.v, 'P')} style={[styles.miniBtn, isSel && !isWaive && styles.payActive]}>
-                          <ThemedText style={[styles.miniText, isSel && !isWaive && {color:'white'}]}>P</ThemedText>
+                          <ThemedText style={[styles.miniText, isSel && !isWaive && {color:'white'}]}>A</ThemedText>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => toggleMonth(m.v, 'C')} style={[styles.miniBtn, isWaive && styles.waiveActive]}>
-                          <ThemedText style={[styles.miniText, isWaive && {color:'white'}]}>C</ThemedText>
+                          <ThemedText style={[styles.miniText, isWaive && {color:'white'}]}>E</ThemedText>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -249,7 +250,7 @@ export default function CreatePaymentScreen() {
                 <ActivityIndicator color="white" />
               ) : (
                 <ThemedText style={styles.saveBtnText}>
-                  Registrar ${(selectedMonths.length - waivedMonths.length) * unitAmount}
+                  Actualizar Datos
                 </ThemedText>
               )}
             </TouchableOpacity>

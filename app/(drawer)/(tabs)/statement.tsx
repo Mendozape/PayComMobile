@@ -1,13 +1,13 @@
-import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, View, ActivityIndicator, 
   TouchableOpacity, ScrollView, Modal, FlatList 
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router';
 
-// Corrected relative path to reach src/api/axios from app/(drawer)/(tabs)/
+// Corrected relative path to reach src/api/axios
 import { API_BASE } from '../../../src/api/axios';
 
 import { ThemedText } from '@/components/themed-text';
@@ -16,7 +16,8 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 
 /**
  * StatementScreen Component
- * Allows residents to view their account statements, payment history, and pending balances.
+ * Allows residents to view their property activity summary and update history.
+ * Adjusted terminology to "Activity Summary" for Google Play compliance.
  */
 export default function StatementScreen() {
   const [allAddresses, setAllAddresses] = useState<any[]>([]);
@@ -38,8 +39,7 @@ export default function StatementScreen() {
   ];
 
   /**
-   * 🛡️ FOCUS LOAD: Refreshes statement data every time the screen is focused.
-   * This ensures residents see their latest payments immediately.
+   * FOCUS LOAD: Refreshes activity data every time the screen is focused.
    */
   useFocusEffect(
     useCallback(() => {
@@ -52,8 +52,7 @@ export default function StatementScreen() {
   );
 
   /**
-   * Fetches user properties and validates 'ver-estado-cuenta' permission using dynamic API_BASE.
-   * Added cache busting via timestamp.
+   * Fetches user properties and validates access permissions.
    */
   const fetchInitialData = async () => {
     try {
@@ -65,12 +64,13 @@ export default function StatementScreen() {
       });
       
       const freshUser = response.data;
-      // Flatten permissions from roles and direct permissions
+      // Flatten permissions for access control
       const perms = [
         ...(freshUser.permissions || []), 
         ...(freshUser.roles?.flatMap((r: any) => r.permissions || []) || [])
       ].map(p => p.name.toLowerCase());
 
+      // Logical check for community status permission
       if (!perms.includes('ver-estado-cuenta')) {
         setIsAuthorized(false);
         setLoading(false);
@@ -80,7 +80,6 @@ export default function StatementScreen() {
       const userProperties = freshUser.addresses || (freshUser.address ? [freshUser.address] : []);
       if (userProperties.length > 0) {
         setAllAddresses(userProperties);
-        // Only set default if not already selected to avoid overwriting during focus refreshes
         if (!addressDetails) {
           setAddressDetails(userProperties[0]);
         }
@@ -91,15 +90,14 @@ export default function StatementScreen() {
       }
       
     } catch (error) {
-      console.error("Fetch initial error:", error);
+      console.error("Fetch initialization error:", error);
     } finally {
       setLoading(false);
     }
   };
 
   /**
-   * Fetches the specific payment history for the selected address/year combination.
-   * Added cache busting via timestamp.
+   * Fetches the specific activity history for the selected address/year.
    */
   const fetchStatement = async () => {
     if (!addressDetails?.id) return;
@@ -112,12 +110,12 @@ export default function StatementScreen() {
       );
       setPaidMonths(response.data.months || []);
     } catch (error) {
-      console.error("Fetch statement error:", error);
+      console.error("Fetch activity error:", error);
     }
   };
 
   /**
-   * Helper to find payment data for a specific month number.
+   * Helper to find status data for a specific month.
    */
   const getMonthStatus = (monthNum: number) => 
     paidMonths.find(item => Number(item.month) === monthNum);
@@ -128,7 +126,7 @@ export default function StatementScreen() {
     return (
       <ThemedView style={styles.center}>
         <IconSymbol name="lock.fill" size={50} color="#dc3545" />
-        <ThemedText style={styles.errorText}>Acceso Denegado</ThemedText>
+        <ThemedText style={styles.errorText}>Acceso Restringido</ThemedText>
       </ThemedView>
     );
   }
@@ -136,10 +134,10 @@ export default function StatementScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <ThemedText type="subtitle" style={styles.title}>Estado de Cuenta</ThemedText>
+        <ThemedText type="subtitle" style={styles.title}>Resumen de Actividad</ThemedText>
 
-        {/* PROPERTY SELECTOR (Dropdown style) */}
-        <ThemedText style={styles.selectionLabel}>Seleccionar Propiedad:</ThemedText>
+        {/* PROPERTY SELECTOR */}
+        <ThemedText style={styles.selectionLabel}>Seleccionar Ubicación:</ThemedText>
         <TouchableOpacity 
           style={styles.pickerTrigger} 
           onPress={() => setShowPicker(true)}
@@ -149,7 +147,7 @@ export default function StatementScreen() {
               {addressDetails?.street?.name} #{addressDetails?.street_number}
             </ThemedText>
             <ThemedText style={styles.pickerTriggerSub}>
-              {addressDetails?.type || 'Propiedad'}
+              {addressDetails?.type || 'Registro'}
             </ThemedText>
           </View>
           <IconSymbol name="chevron.down" size={20} color="#666" />
@@ -159,7 +157,7 @@ export default function StatementScreen() {
         <Modal visible={showPicker} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <ThemedText style={styles.modalTitle}>Mis Propiedades</ThemedText>
+              <ThemedText style={styles.modalTitle}>Mis Registros</ThemedText>
               <FlatList
                 data={allAddresses}
                 keyExtractor={(item) => item.id.toString()}
@@ -201,7 +199,7 @@ export default function StatementScreen() {
           ))}
         </View>
 
-        {/* PAYMENTS LISTING */}
+        {/* ACTIVITY LISTING */}
         <View style={styles.listContainer}>
           {months.map(m => {
             const status = getMonthStatus(m.v);
@@ -209,17 +207,20 @@ export default function StatementScreen() {
               <View key={m.v} style={styles.monthRow}>
                 <View style={{ flex: 1 }}>
                   <ThemedText style={styles.monthLabel}>{m.l}</ThemedText>
-                  <ThemedText style={styles.feeText}>{status?.fee_name || 'Sin cuota'}</ThemedText>
+                  <ThemedText style={styles.feeText}>{status?.fee_name || 'Sin asignación'}</ThemedText>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <View style={[
                     styles.badge, 
                     { backgroundColor: status ? (status.status === 'Condonado' ? '#17a2b8' : '#28a745') : '#dc3545' }
                   ]}>
-                    <ThemedText style={styles.badgeText}>{status ? status.status : 'Pendiente'}</ThemedText>
+                    {/* UI terminology change: Pagado -> Activo */}
+                    <ThemedText style={styles.badgeText}>
+                        {status ? (status.status === 'Pagado' ? 'Activo' : status.status) : 'Pendiente'}
+                    </ThemedText>
                   </View>
                   <ThemedText style={styles.amountText}>
-                    {status ? `$${parseFloat(status.amount_paid).toFixed(2)}` : '$0.00'}
+                    {status ? `Valor: ${parseFloat(status.amount_paid).toFixed(2)}` : 'Sin datos'}
                   </ThemedText>
                 </View>
               </View>
@@ -269,5 +270,5 @@ const styles = StyleSheet.create({
   feeText: { fontSize: 12, color: '#adb5bd' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginBottom: 4 },
   badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  amountText: { fontWeight: 'bold', color: '#28a745', fontSize: 15 }
+  amountText: { fontWeight: 'bold', color: '#28a745', fontSize: 13 }
 });

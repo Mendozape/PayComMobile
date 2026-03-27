@@ -4,6 +4,7 @@ import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 /**
  * An icon symbol component that uses MaterialIcons from Expo.
  * The MAPPING object connects custom SF Symbols-style names to MaterialIcons.
+ * This ensures cross-platform compatibility for iOS and Android.
  */
 const MAPPING = {
   // --- Navigation & UI ---
@@ -11,9 +12,11 @@ const MAPPING = {
   'line.3.horizontal': 'menu',
   'chevron.right': 'chevron-right',
   'chevron.down': 'keyboard-arrow-down',
+  'chevron.up': 'keyboard-arrow-up', // <-- ADDED FOR COLLAPSIBLE
   'chevron.left.forwardslash.chevron.right': 'code',
   'magnifyingglass': 'search',
   'arrow.left': 'arrow-back',
+  'gearshape.fill': 'settings', // <-- ADDED FOR CONFIGURATION HEADER
   
   // --- Actions ---
   'plus': 'add',
@@ -55,7 +58,7 @@ const MAPPING = {
 
   // --- Communication ---
   'paperplane.fill': 'send',
-  'message.fill': 'message', // <-- AGREGADO AQUÍ
+  'message.fill': 'message',
   'envelope.fill': 'email',
   'bell.fill': 'notifications',
 } as const;
@@ -64,6 +67,7 @@ export type IconSymbolName = keyof typeof MAPPING;
 
 /**
  * IconSymbol component to render vector icons based on a pre-defined mapping.
+ * Uses MaterialIcons for a consistent look on both Android and iOS.
  */
 export function IconSymbol({
   name,

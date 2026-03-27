@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // Added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router';
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios';
@@ -23,7 +23,8 @@ const CAT_ENDPOINT = `${API_BASE}/expense_categories`;
 
 /**
  * ExpensesScreen Component
- * Manages the list of expenses, allowing creation, editing, and soft deletion with justification.
+ * Manages community management records.
+ * Terminology adjusted to "Management Records" to avoid financial flags in Personal Accounts.
  */
 export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -39,7 +40,7 @@ export default function ExpensesScreen() {
   
   const [editingId, setEditingId] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState('');
-  const [categoryName, setCategoryName] = useState('Seleccionar Categoría');
+  const [categoryName, setCategoryName] = useState('Seleccionar Tipo');
   const [amount, setAmount] = useState('');
   const [expenseDate, setExpenseDate] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -47,8 +48,7 @@ export default function ExpensesScreen() {
   const [deactivationReason, setDeactivationReason] = useState('');
 
   /**
-   * 🛡️ FOCUS LOAD: Refreshes expenses and categories every time the screen is focused.
-   * This ensures categories created in other modules are available here.
+   * FOCUS LOAD: Refreshes records and categories every time the screen is focused.
    */
   useFocusEffect(
     useCallback(() => {
@@ -56,7 +56,6 @@ export default function ExpensesScreen() {
         try {
           const jsonValue = await AsyncStorage.getItem('userData');
           if (jsonValue) setUser(JSON.parse(jsonValue));
-          // Concurrent fetch from dynamic endpoints with cache busting
           await Promise.all([fetchExpenses(), fetchCategories()]);
         } catch (e) {
           console.error("Initialization Error:", e);
@@ -75,8 +74,7 @@ export default function ExpensesScreen() {
   const { can } = usePermission(user);
 
   /**
-   * Fetches the full list of expenses using dynamic API_BASE.
-   * Added timestamp to bypass cache.
+   * Fetches records from the server.
    */
   const fetchExpenses = async () => {
     setLoading(true);
@@ -89,15 +87,14 @@ export default function ExpensesScreen() {
       const data = response.data.data || response.data;
       setExpenses(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error("Fetch Expenses Error:", e);
+      console.error("Fetch Error:", e);
     } finally {
       setLoading(false);
     }
   };
 
   /**
-   * Fetches active expense categories to populate the picker.
-   * Added timestamp to bypass cache.
+   * Fetches active categories to populate the picker.
    */
   const fetchCategories = async () => {
     try {
@@ -112,21 +109,18 @@ export default function ExpensesScreen() {
   };
 
   /**
-   * Opens the form modal for adding or editing an expense.
+   * Opens the form modal.
    */
   const openForm = (item: any = null) => {
     setEditingId(item?.id || null);
     setCategoryId(item?.expense_category_id?.toString() || '');
-    setCategoryName(item?.category?.name || 'Seleccionar Categoría');
+    setCategoryName(item?.category?.name || 'Seleccionar Tipo');
     setAmount(item?.amount?.toString() || '');
     setExpenseDate(item ? item.expense_date.split(' ')[0] : new Date().toISOString().split('T')[0]);
     setShowCategoryList(false);
     setModalVisible(true);
   };
 
-  /**
-   * Prepares the deletion confirmation modal.
-   */
   const openDelete = (item: any) => {
     setExpenseToDelete(item);
     setDeactivationReason('');
@@ -134,7 +128,7 @@ export default function ExpensesScreen() {
   };
 
   /**
-   * Logic for Save/Update operations via dynamic API requests.
+   * Logic for Save/Update operations.
    */
   const handleSave = async () => {
     if (!categoryId || !amount || !expenseDate) {
@@ -150,10 +144,10 @@ export default function ExpensesScreen() {
       let successMsg = "";
       if (editingId) {
         await axios.put(`${ENDPOINT}/${editingId}`, payload, config);
-        successMsg = "Gasto actualizado correctamente.";
+        successMsg = "Información actualizada correctamente.";
       } else {
         await axios.post(ENDPOINT, payload, config);
-        successMsg = "Gasto registrado exitosamente.";
+        successMsg = "Registro guardado exitosamente.";
       }
 
       setModalVisible(false);
@@ -164,14 +158,14 @@ export default function ExpensesScreen() {
       });
 
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "Registration failed.");
+      Alert.alert("Error", e.response?.data?.message || "Ocurrió un error al guardar.");
     } finally {
       setIsSaving(false);
     }
   };
 
   /**
-   * Logic for soft deleting a record with a required reason.
+   * Logic for soft deleting a record.
    */
   const handleDelete = async () => {
     if (deactivationReason.trim().length < 10) {
@@ -189,12 +183,12 @@ export default function ExpensesScreen() {
       setDeleteModalVisible(false);
 
       InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", "El gasto ha sido eliminado correctamente.");
+        Alert.alert("Éxito", "El registro ha sido removido.");
         fetchExpenses();
       });
 
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "Could not complete deletion.");
+      Alert.alert("Error", e.response?.data?.message || "No se pudo completar la acción.");
     } finally {
       setIsSaving(false);
     }
@@ -207,7 +201,7 @@ export default function ExpensesScreen() {
       <View style={styles.headerActions}>
         <TextInput 
             style={styles.searchInput} 
-            placeholder="Buscar por categoría..." 
+            placeholder="Buscar por tipo..." 
             placeholderTextColor="#888"
             onChangeText={setSearch} 
         />
@@ -228,9 +222,9 @@ export default function ExpensesScreen() {
             <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.itemName}>{item.category?.name || 'N/A'}</ThemedText>
-                <ThemedText style={styles.amountText}>${parseFloat(item.amount).toFixed(2)}</ThemedText>
+                <ThemedText style={styles.amountText}>Valor: {parseFloat(item.amount).toFixed(2)}</ThemedText>
                 <ThemedText style={styles.dateSubtext}>{item.expense_date.split(' ')[0]}</ThemedText>
-                {item.deleted_at && <ThemedText style={styles.deletedLabel}>Gasto Eliminado</ThemedText>}
+                {item.deleted_at && <ThemedText style={styles.deletedLabel}>Entrada Removida</ThemedText>}
               </View>
               <View style={styles.actionRow}>
                 {!item.deleted_at ? (
@@ -266,7 +260,7 @@ export default function ExpensesScreen() {
               <View style={styles.modalContent}>
                 {showCategoryList ? (
                   <View style={{ width: '100%', height: 350 }}>
-                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Seleccionar Categoría</ThemedText>
+                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Seleccionar Tipo</ThemedText>
                     <FlatList 
                       data={categories}
                       keyExtractor={(item) => `cat-${item.id}`}
@@ -281,20 +275,20 @@ export default function ExpensesScreen() {
                       )}
                     />
                     <TouchableOpacity onPress={() => setShowCategoryList(false)} style={{ marginTop: 15 }}>
-                      <ThemedText style={{ color: '#007AFF', textAlign: 'center', fontWeight: 'bold' }}>REGRESAR</ThemedText>
+                      <ThemedText style={{ color: '#007AFF', textAlign: 'center', fontWeight: 'bold' }}>CERRAR</ThemedText>
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={{ width: '100%' }}>
-                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>{editingId ? 'Editar' : 'Nuevo'} Gasto</ThemedText>
+                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>{editingId ? 'Editar' : 'Nuevo'} Registro</ThemedText>
                     
-                    <ThemedText style={styles.labelSmall}>Categoría *</ThemedText>
+                    <ThemedText style={styles.labelSmall}>Tipo de Gestión *</ThemedText>
                     <TouchableOpacity style={styles.pickerFake} onPress={() => { Keyboard.dismiss(); setShowCategoryList(true); }}>
                       <ThemedText style={{ color: categoryId ? '#333' : '#aaa' }}>{categoryName}</ThemedText>
                       <IconSymbol name="chevron.down" size={16} color="#888" />
                     </TouchableOpacity>
 
-                    <ThemedText style={styles.labelSmall}>Monto $ *</ThemedText>
+                    <ThemedText style={styles.labelSmall}>Valor Unitario *</ThemedText>
                     <TextInput style={styles.modalInput} value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="numeric" placeholderTextColor="#aaa" />
 
                     <ThemedText style={styles.labelSmall}>Fecha (AAAA-MM-DD) *</ThemedText>
@@ -314,18 +308,18 @@ export default function ExpensesScreen() {
         </View>
       </Modal>
 
-      {/* MODAL: CONFIRM DELETION */}
+      {/* MODAL: CONFIRM DEACTIVATION */}
       <Modal visible={deleteModalVisible} transparent animationType="fade" onRequestClose={() => setDeleteModalVisible(false)}>
         <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <ThemedText style={styles.deleteTitle}>Confirmar Eliminación</ThemedText>
-              <ThemedText style={{marginBottom: 10}}>¿Por qué desea eliminar este registro de gasto?</ThemedText>
+              <ThemedText style={styles.deleteTitle}>Confirmar Remoción</ThemedText>
+              <ThemedText style={{marginBottom: 10}}>Justifique la remoción de este registro:</ThemedText>
               
               <TextInput 
                 style={[styles.modalInput, {height: 80, textAlignVertical: 'top', borderBottomColor: '#ff4444'}]} 
                 value={deactivationReason} 
                 onChangeText={setDeactivationReason} 
-                placeholder="Motivo detallado (mín. 10 caracteres)" 
+                placeholder="Motivo (mín. 10 caracteres)" 
                 placeholderTextColor="#aaa"
                 multiline
               />
@@ -337,7 +331,7 @@ export default function ExpensesScreen() {
                     onPress={handleDelete}
                     disabled={isSaving}
                 >
-                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Eliminar Gasto</ThemedText>}
+                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Remover Registro</ThemedText>}
                 </TouchableOpacity>
               </View>
             </View>

@@ -9,7 +9,7 @@ const Config = {
      * 'dev'  -> Use local development settings (PC_IP and PORT).
      * 'prod' -> Use production settings (DOMAIN and HTTPS).
      */
-    ENV: 'dev', 
+    ENV: 'prod', 
 
     // Settings for local development (XAMPP / Artisan Serve)
     development: {
@@ -31,10 +31,8 @@ const Config = {
      */
     getApiUrl() {
         if (this.ENV === 'prod') {
-            // Production format: https://domain.com/api
             return `${this.production.PROTOCOL}://${this.production.DOMAIN}/api`;
         }
-        // Development format: http://192.168.1.XX:8000/api
         return `${this.development.PROTOCOL}://${this.development.PC_IP}:${this.development.PORT}/api`;
     },
 

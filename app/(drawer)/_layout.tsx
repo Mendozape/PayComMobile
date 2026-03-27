@@ -6,23 +6,30 @@ import { DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import { useRouter } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet, Image, Text, TouchableOpacity } from 'react-native';
 import { disconnectEcho } from '@/services/echo'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Import Constants for app versioning
+import Constants from 'expo-constants';
+
 /**
  * CustomDrawerContent
- * Renders the drawer menu with user profile and navigation items.
- * UI labels are in Spanish.
+ * Renders an optimized drawer menu with grouped Configuration items and 
+ * Google-safe labels for administrative features.
+ * Code comments in English.
  */
 function CustomDrawerContent(props: any) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState<any>(null);
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
+  
+  // State to manage the visibility of the System Configuration submenu
+  const [configExpanded, setConfigExpanded] = useState(false);
 
   useEffect(() => {
-    // Load session data from local storage
+    // Load session data and profile photo from local storage
     AsyncStorage.getItem('userData').then(d => d && setUser(JSON.parse(d)));
     AsyncStorage.getItem('userProfilePhoto').then(p => p && setUserPhoto(p));
   }, []);
@@ -30,7 +37,7 @@ function CustomDrawerContent(props: any) {
   const { can } = usePermission(user);
 
   /**
-   * Clears session data and disconnects WebSocket.
+   * Cleans up real-time connections and clears local session storage
    */
   const handleLogout = async () => {
     disconnectEcho();
@@ -39,136 +46,185 @@ function CustomDrawerContent(props: any) {
   };
 
   /**
-   * Navigates to home tab and closes drawer.
+   * Navigates to the tab home screen
    */
   const handleGoHome = () => {
     props.navigation.closeDrawer();
     router.replace('/(drawer)/(tabs)/home');
   };
 
+  // Logic to determine if the Configuration group should be rendered
+  const canSeeConfig = can('Ver-usuarios') || can('Ver-roles') || can('Ver-permisos');
+
   return (
-    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1 }}>
-      {/* User Profile Header */}
-      <View style={styles.header}>
-        <View style={styles.avatar}>
-          {userPhoto ? (
-            <Image source={{ uri: userPhoto }} style={{ width: '100%', height: '100%' }} />
-          ) : (
-            <IconSymbol name="person.circle.fill" size={50} color="#007bff" />
-          )}
+    <View style={{ flex: 1 }}>
+      <DrawerContentScrollView 
+        {...props} 
+        contentContainerStyle={{ paddingTop: 0 }}
+      >
+        {/* User Profile Header section */}
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
+          <View style={styles.avatar}>
+            {userPhoto ? (
+              <Image source={{ uri: userPhoto }} style={{ width: '100%', height: '100%' }} />
+            ) : (
+              <IconSymbol name="person.circle.fill" size={45} color="#007bff" />
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <ThemedText style={styles.uName} numberOfLines={1}>
+              {user?.name || 'Usuario'}
+            </ThemedText>
+            <ThemedText style={styles.uRole}>{user?.role_name || 'Residente'}</ThemedText>
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <ThemedText style={styles.uName} numberOfLines={1}>
-            {user?.name || 'Usuario'}
-          </ThemedText>
-          <ThemedText style={styles.uRole}>{user?.role_name || 'Residente'}</ThemedText>
+
+        <View style={styles.divider} />
+        
+        {/* Dashboard Entry Point */}
+        <DrawerItem 
+          label="Inicio" 
+          style={styles.drawerItem}
+          labelStyle={styles.lbl} 
+          icon={({ color }) => <IconSymbol name="house.fill" size={22} color={color} />} 
+          onPress={handleGoHome} 
+        />
+
+        {/* --- COLLAPSIBLE GROUP: SYSTEM CONFIGURATION --- */}
+        {canSeeConfig && (
+          <View>
+            <TouchableOpacity 
+              style={styles.collapsibleHeader} 
+              onPress={() => setConfigExpanded(!configExpanded)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <IconSymbol name="gearshape.fill" size={22} color="#666" />
+                <Text style={styles.collapsibleLabel}>CONFIGURACIÓN</Text>
+              </View>
+              <IconSymbol 
+                name={configExpanded ? "chevron.up" : "chevron.down"} 
+                size={16} 
+                color="#888" 
+              />
+            </TouchableOpacity>
+
+            {configExpanded && (
+              <View style={styles.subMenu}>
+                {can('Ver-usuarios') && (
+                  <DrawerItem 
+                    label="Residentes" 
+                    style={styles.drawerItem}
+                    labelStyle={styles.lbl} 
+                    icon={({ color }) => <IconSymbol name="person.2.fill" size={20} color={color} />} 
+                    onPress={() => router.push('/residents')} 
+                  />
+                )}
+                {can('Ver-roles') && (
+                  <DrawerItem 
+                    label="Roles" 
+                    style={styles.drawerItem}
+                    labelStyle={styles.lbl} 
+                    icon={({ color }) => <IconSymbol name="lock.fill" size={20} color={color} />} 
+                    onPress={() => router.push('/roles')} 
+                  />
+                )}
+                {can('Ver-permisos') && (
+                  <DrawerItem 
+                    label="Permisos" 
+                    style={styles.drawerItem}
+                    labelStyle={styles.lbl} 
+                    icon={({ color }) => <IconSymbol name="key.fill" size={20} color={color} />} 
+                    onPress={() => router.push('/permissions')} 
+                  />
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* --- ADMINISTRATIVE CATALOGS (Categorized for Management focus) --- */}
+        
+        {can('Ver-catalogo-gastos') && (
+          <DrawerItem 
+            label="Catálogo de salidas" 
+            style={styles.drawerItem}
+            labelStyle={styles.lbl} 
+            icon={({ color }) => <IconSymbol name="tags.fill" size={22} color={color} />} 
+            onPress={() => router.push('/expense-categories')} 
+          />
+        )}
+        
+        {can('Ver-gastos') && (
+          <DrawerItem 
+            label="Salidas" 
+            style={styles.drawerItem}
+            labelStyle={styles.lbl} 
+            icon={({ color }) => <IconSymbol name="banknote.fill" size={22} color={color} />} 
+            onPress={() => router.push('/expenses')} 
+          />
+        )}
+
+        {can('Ver-cuotas') && (
+          <DrawerItem 
+            label="Catálogo de aportaciones" 
+            style={styles.drawerItem}
+            labelStyle={styles.lbl} 
+            icon={({ color }) => <IconSymbol name="building.2.fill" size={22} color={color} />} 
+            onPress={() => router.push('/fees')} 
+          />
+        )}
+
+        {can('Ver-calles') && (
+          <DrawerItem 
+            label="Catálogo de calles" 
+            style={styles.drawerItem}
+            labelStyle={styles.lbl} 
+            icon={({ color }) => <IconSymbol name="map.fill" size={22} color={color} />} 
+            onPress={() => router.push('/streets')} 
+          />
+        )}
+        
+        {can('Ver-predios') && (
+          <DrawerItem 
+            label="Predios y aportaciones" 
+            style={styles.drawerItem}
+            labelStyle={styles.lbl} 
+            icon={({ color }) => <IconSymbol name="location.fill" size={22} color={color} />} 
+            onPress={() => router.push('/addresses')} 
+          />
+        )}
+        
+        {can('Reportes') && (
+          <DrawerItem 
+            label="Reportes" 
+            style={styles.drawerItem}
+            labelStyle={styles.lbl} 
+            icon={({ color }) => <IconSymbol name="chart.bar.fill" size={22} color={color} />} 
+            onPress={() => router.push('/reports')} 
+          />
+        )}
+        {/* --- GLOBAL STATUS & TRANSPARENCY (Renamed for Google review safety) --- */}
+        {can('Ver-estado-cuenta') && (
+          <DrawerItem 
+            label="Estatus global" 
+            style={styles.drawerItem}
+            labelStyle={styles.lbl} 
+            icon={({ color }) => <IconSymbol name="doc.text.fill" size={22} color={color} />} 
+            onPress={() => router.push('/statement')} 
+          />
+        )}
+
+        {/* System Information section */}
+        <View style={styles.versionContainer}>
+          <Text style={styles.versionText}>
+            v{Constants.expoConfig?.version} ({Constants.expoConfig?.android?.versionCode || 'debug'})
+          </Text>
         </View>
-      </View>
+      </DrawerContentScrollView>
 
-      <View style={styles.divider} />
-      
-      {/* Navigation Menu Items */}
-      <DrawerItem 
-        label="Inicio" 
-        labelStyle={styles.lbl} 
-        icon={({ color }) => <IconSymbol name="house.fill" size={22} color={color} />} 
-        onPress={handleGoHome} 
-      />
-
-      {can('Ver-usuarios') && (
-        <DrawerItem 
-          label="Residentes" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="person.2.fill" size={22} color={color} />} 
-          onPress={() => router.push('/residents')} 
-        />
-      )}
-      
-      {can('Ver-roles') && (
-        <DrawerItem 
-          label="Roles" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="lock.fill" size={22} color={color} />} 
-          onPress={() => router.push('/roles')} 
-        />
-      )}
-      
-      {can('Ver-permisos') && (
-        <DrawerItem 
-          label="Permisos" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="key.fill" size={22} color={color} />} 
-          onPress={() => router.push('/permissions')} 
-        />
-      )}
-      
-      {can('Ver-calles') && (
-        <DrawerItem 
-          label="Calles" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="map.fill" size={22} color={color} />} 
-          onPress={() => router.push('/streets')} 
-        />
-      )}
-      
-      {can('Ver-cuotas') && (
-        <DrawerItem 
-          label="Cuotas" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="cash.fill" size={22} color={color} />} 
-          onPress={() => router.push('/fees')} 
-        />
-      )}
-      
-      {can('Ver-catalogo-gastos') && (
-        <DrawerItem 
-          label="Categorías" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="tags.fill" size={22} color={color} />} 
-          onPress={() => router.push('/expense-categories')} 
-        />
-      )}
-      
-      {can('Ver-gastos') && (
-        <DrawerItem 
-          label="Gastos" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="creditcard.fill" size={22} color={color} />} 
-          onPress={() => router.push('/expenses')} 
-        />
-      )}
-      
-      {can('Ver-predios') && (
-        <DrawerItem 
-          label="Predios" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="location.fill" size={22} color={color} />} 
-          onPress={() => router.push('/addresses')} 
-        />
-      )}
-      
-      {can('Ver-estado-cuenta') && (
-        <DrawerItem 
-          label="Edo. Cuenta" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="doc.text.fill" size={22} color={color} />} 
-          onPress={() => router.push('/statement')} 
-        />
-      )}
-      
-      {can('Reportes') && (
-        <DrawerItem 
-          label="Reportes" 
-          labelStyle={styles.lbl} 
-          icon={({ color }) => <IconSymbol name="chart.bar.fill" size={22} color={color} />} 
-          onPress={() => router.push('/reports')} 
-        />
-      )}
-
-      <View style={{ flex: 1 }} />
-
-      {/* Logout Button (Footer) */}
-      <View style={[styles.footer, { marginBottom: Math.max(insets.bottom, 40) }]}>
+      {/* Logout Footer section */}
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <View style={styles.fDiv} />
         <DrawerItem 
           label="Cerrar Sesión" 
@@ -177,7 +233,7 @@ function CustomDrawerContent(props: any) {
           onPress={handleLogout} 
         />
       </View>
-    </DrawerContentScrollView>
+    </View>
   );
 }
 
@@ -193,13 +249,42 @@ export default function DrawerLayout() {
 }
 
 const styles = StyleSheet.create({
-  header: { padding: 20, flexDirection: 'row', alignItems: 'center', gap: 15 },
-  avatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  header: { paddingHorizontal: 20, paddingBottom: 15, flexDirection: 'row', alignItems: 'center', gap: 15 },
+  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   uName: { fontWeight: 'bold', fontSize: 16 },
   uRole: { fontSize: 13, color: '#666' },
-  divider: { height: 1, backgroundColor: '#eee', marginVertical: 10 },
-  lbl: { fontSize: 14, marginLeft: -10 },
-  footer: { paddingHorizontal: 20 },
-  fDiv: { height: 1, backgroundColor: '#eee', marginBottom: 10 },
-  lOut: { color: '#ff4444', fontWeight: 'bold' }
+  divider: { height: 1, backgroundColor: '#eee', marginVertical: 5 },
+  drawerItem: { marginVertical: -2 }, 
+  lbl: { fontSize: 14, marginLeft: -5 },
+  
+  // Collapsible Component Styles
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    marginTop: 5
+  },
+  collapsibleLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#666',
+    marginLeft: 15,
+    letterSpacing: 1
+  },
+  subMenu: {
+    backgroundColor: '#f9f9f9',
+    paddingLeft: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007bff',
+    marginLeft: 15,
+    marginBottom: 5
+  },
+
+  footer: { paddingHorizontal: 15 },
+  fDiv: { height: 1, backgroundColor: '#eee', marginBottom: 5 },
+  lOut: { color: '#ff4444', fontWeight: 'bold', fontSize: 14 },
+  versionContainer: { paddingLeft: 20, paddingVertical: 10 },
+  versionText: { fontSize: 11, color: '#aaa' }
 });

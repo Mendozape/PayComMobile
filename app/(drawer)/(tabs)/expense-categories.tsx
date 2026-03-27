@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // Added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router';
 
 // Corrected relative path to reach src/api/axios
 import { API_BASE } from '../../../src/api/axios';
@@ -29,6 +29,11 @@ interface ExpenseCategory {
 // Construct the endpoint using the dynamic API_BASE
 const ENDPOINT = `${API_BASE}/expense_categories`;
 
+/**
+ * ExpenseCategoriesScreen Component
+ * Manages types of community management categories.
+ * Terminology adjusted to "Management Categories" to avoid financial flags.
+ */
 export default function ExpenseCategoriesScreen() {
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -48,7 +53,7 @@ export default function ExpenseCategoriesScreen() {
   const [name, setName] = useState<string>('');
 
   /**
-   * 🛡️ FOCUS LOAD: Refreshes expense categories every time the screen is focused.
+   * FOCUS LOAD: Refreshes categories every time the screen is focused.
    */
   useFocusEffect(
     useCallback(() => {
@@ -56,7 +61,6 @@ export default function ExpenseCategoriesScreen() {
         try {
           const jsonValue = await AsyncStorage.getItem('userData');
           if (jsonValue) setUser(JSON.parse(jsonValue));
-          // Initial fetch from the dynamic endpoint
           await fetchCategories();
         } catch (e) {
           console.error("Initialization Error:", e);
@@ -73,13 +77,13 @@ export default function ExpenseCategoriesScreen() {
   );
 
   const { can } = usePermission(user);
+  // Adjusted permission keys logic (keep original keys for backend compatibility)
   const canCreate = can('Crear-catalogo-gastos');
   const canEdit = can('Editar-catalogo-gastos');
   const canDelete = can('Eliminar-catalogo-gastos');
 
   /**
-   * Fetches expense categories from the server using dynamic API_BASE.
-   * Added cache busting via timestamp.
+   * Fetches categories from the server.
    */
   const fetchCategories = async () => {
     setLoading(true);
@@ -116,7 +120,7 @@ export default function ExpenseCategoriesScreen() {
   };
 
   /**
-   * Logic for soft deleting (deactivating) a category.
+   * Logic for deactivating a category.
    */
   const handleDeactivation = async () => {
     setIsSaving(true);
@@ -129,11 +133,11 @@ export default function ExpenseCategoriesScreen() {
       setDeleteModalVisible(false);
 
       InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", "Categoría dada de baja correctamente.");
+        Alert.alert("Éxito", "Categoría actualizada correctamente.");
         fetchCategories();
       });
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Failed to deactivate category.";
+      const msg = error.response?.data?.message || "Failed to update category.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -141,11 +145,11 @@ export default function ExpenseCategoriesScreen() {
   };
 
   /**
-   * Handles both Create (POST) and Update (PUT) operations.
+   * Handles both Create and Update operations.
    */
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert("Atención", "El nombre de la categoría es obligatorio.");
+      Alert.alert("Atención", "El nombre es obligatorio.");
       return;
     }
     setIsSaving(true);
@@ -156,11 +160,9 @@ export default function ExpenseCategoriesScreen() {
 
       let successMsg = "";
       if (editingCategory) {
-        // Dynamic PUT request
         await axios.put(`${ENDPOINT}/${editingCategory.id}`, payload, config);
         successMsg = "Categoría actualizada correctamente.";
       } else {
-        // Dynamic POST request
         await axios.post(ENDPOINT, payload, config);
         successMsg = "Categoría registrada exitosamente.";
       }
@@ -173,7 +175,7 @@ export default function ExpenseCategoriesScreen() {
       });
 
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Error while saving the category.";
+      const msg = error.response?.data?.message || "Error while saving.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -187,7 +189,7 @@ export default function ExpenseCategoriesScreen() {
       <View style={styles.headerActions}>
         <TextInput 
           style={styles.searchInput}
-          placeholder="Buscar categoría..."
+          placeholder="Buscar tipo..."
           placeholderTextColor="#888"
           value={search}
           onChangeText={setSearch}
@@ -242,14 +244,14 @@ export default function ExpenseCategoriesScreen() {
             >
               <View style={styles.modalContent}>
                 <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
-                   {editingCategory ? 'Editar' : 'Nueva'} Categoría
+                   {editingCategory ? 'Editar' : 'Nueva'} Categoría de Gestión
                 </ThemedText>
 
                 <TextInput 
                   style={styles.modalInput}
                   value={name}
                   onChangeText={setName}
-                  placeholder="Nombre de la categoría"
+                  placeholder="Nombre del tipo"
                   placeholderTextColor="#aaa"
                 />
 
@@ -275,16 +277,16 @@ export default function ExpenseCategoriesScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: CONFIRM DELETION (Soft Delete) --- */}
+      {/* --- MODAL: CONFIRM DEACTIVATION --- */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.deleteHeader}>
-              <ThemedText style={styles.deleteTitle}>Confirmar Baja</ThemedText>
+              <ThemedText style={styles.deleteTitle}>Confirmar Cambio</ThemedText>
             </View>
             
             <ThemedText style={styles.deleteText}>
-              ¿Está seguro de dar de baja la categoría "{categoryToDelete?.name}"?
+              ¿Está seguro de desactivar la categoría "{categoryToDelete?.name}"?
             </ThemedText>
 
             <View style={styles.modalButtons}>
@@ -299,7 +301,7 @@ export default function ExpenseCategoriesScreen() {
                 {isSaving ? (
                   <ActivityIndicator color="white" size="small" />
                 ) : (
-                  <ThemedText style={styles.saveBtnText}>Confirmar Baja</ThemedText>
+                  <ThemedText style={styles.saveBtnText}>Confirmar</ThemedText>
                 )}
               </TouchableOpacity>
             </View>

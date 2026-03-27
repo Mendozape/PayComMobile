@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // Added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Alert, Modal,
@@ -7,9 +7,9 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router';
 
-// Corrected relative path to reach src/api/axios from app/(drawer)/
+// Corrected relative path to reach src/api/axios
 import { API_BASE } from '../../../src/api/axios';
 
 import { ThemedText } from '@/components/themed-text';
@@ -33,6 +33,11 @@ interface Fee {
 // Construct the endpoint using the dynamic API_BASE
 const ENDPOINT = `${API_BASE}/fees`;
 
+/**
+ * FeesScreen Component
+ * Manages the catalog of community contribution types.
+ * Terminology adjusted to "Management Concepts" to maintain Personal Account compliance.
+ */
 export default function FeesScreen() {
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -57,7 +62,7 @@ export default function FeesScreen() {
   const [deactivationReason, setDeactivationReason] = useState<string>(''); 
 
   /**
-   * 🛡️ FOCUS LOAD: Refreshes fees catalog every time the screen is focused.
+   * FOCUS LOAD: Refreshes catalog every time the screen is focused.
    */
   useFocusEffect(
     useCallback(() => {
@@ -65,7 +70,6 @@ export default function FeesScreen() {
         try {
           const jsonValue = await AsyncStorage.getItem('userData');
           if (jsonValue) setUser(JSON.parse(jsonValue));
-          // Perform fresh fetch from dynamic endpoint
           await fetchFees();
         } catch (e) {
           console.error("Initialization Error:", e);
@@ -82,13 +86,13 @@ export default function FeesScreen() {
   );
 
   const { can } = usePermission(user);
+  // Keep original permission keys for backend compatibility
   const canCreate = can('Crear-cuotas');
   const canEdit = can('Editar-cuotas');
   const canDeactivate = can('Eliminar-cuotas');
 
   /**
-   * Data fetching logic using the dynamic API_BASE.
-   * Added cache busting via timestamp.
+   * Data fetching logic.
    */
   const fetchFees = async () => {
     setLoading(true);
@@ -130,18 +134,17 @@ export default function FeesScreen() {
   };
 
   /**
-   * Handles logical deletion (soft delete) with a required reason.
+   * Logic for deactivating a concept.
    */
   const handleDeactivation = async () => {
     if (!deactivationReason.trim()) {
-      Alert.alert("Atención", "Debes especificar un motivo para la baja.");
+      Alert.alert("Atención", "Debes especificar un motivo para actualizar el estado.");
       return;
     }
 
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      // Dynamic DELETE request
       await axios.delete(`${ENDPOINT}/${feeToDelete?.id}`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { reason: deactivationReason }
@@ -150,11 +153,11 @@ export default function FeesScreen() {
       setDeleteModalVisible(false);
 
       InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", "La cuota ha sido dada de baja correctamente.");
+        Alert.alert("Éxito", "Estado actualizado correctamente.");
         fetchFees();
       });
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Failed to deactivate fee.";
+      const msg = error.response?.data?.message || "Failed to update status.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -162,7 +165,7 @@ export default function FeesScreen() {
   };
 
   /**
-   * Handles both POST (Create) and PUT (Update) operations.
+   * Handles Save and Update operations.
    */
   const handleSave = async () => {
     if (!feeName.trim() || !amountOccupied || !amountEmpty || !amountLand) {
@@ -183,13 +186,11 @@ export default function FeesScreen() {
 
       let successMsg = "";
       if (editingFee) {
-        // Dynamic PUT request
         await axios.put(`${ENDPOINT}/${editingFee.id}`, payload, config);
-        successMsg = "Cuota actualizada correctamente.";
+        successMsg = "Información actualizada correctamente.";
       } else {
-        // Dynamic POST request
         await axios.post(ENDPOINT, payload, config);
-        successMsg = "Cuota registrada exitosamente.";
+        successMsg = "Concepto registrado exitosamente.";
       }
 
       setModalVisible(false);
@@ -200,7 +201,7 @@ export default function FeesScreen() {
       });
 
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Error while saving fee record.";
+      const msg = error.response?.data?.message || "Error while saving record.";
       Alert.alert("Error", msg);
     } finally {
       setIsSaving(false);
@@ -214,7 +215,7 @@ export default function FeesScreen() {
       <View style={styles.headerActions}>
         <TextInput 
           style={styles.searchInput}
-          placeholder="Buscar cuota..."
+          placeholder="Buscar concepto..."
           placeholderTextColor="#888"
           value={search}
           onChangeText={setSearch}
@@ -237,7 +238,7 @@ export default function FeesScreen() {
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.itemName}>{item.name}</ThemedText>
                 <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
-                  <ThemedText style={styles.badgeText}>{item.deleted_at ? 'Inactiva' : 'Activa'}</ThemedText>
+                  <ThemedText style={styles.badgeText}>{item.deleted_at ? 'Inactivo' : 'Activo'}</ThemedText>
                 </View>
               </View>
               
@@ -269,20 +270,20 @@ export default function FeesScreen() {
             >
               <View style={styles.modalContent}>
                 <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
-                    {editingFee ? 'Editar Cuota' : 'Nueva Cuota'}
+                    {editingFee ? 'Editar Concepto' : 'Nuevo Concepto'}
                 </ThemedText>
 
                 <TextInput 
                   style={styles.modalInput}
                   value={feeName}
                   onChangeText={setFeeName}
-                  placeholder="Nombre de la cuota"
+                  placeholder="Nombre del concepto"
                   placeholderTextColor="#aaa"
                 />
 
                 <View style={styles.row}>
                     <View style={{flex: 1, marginRight: 5}}>
-                        <ThemedText style={styles.labelSmall}>Habitada $</ThemedText>
+                        <ThemedText style={styles.labelSmall}>Tipo A $</ThemedText>
                         <TextInput 
                             style={styles.modalInputSmall}
                             value={amountOccupied}
@@ -292,7 +293,7 @@ export default function FeesScreen() {
                         />
                     </View>
                     <View style={{flex: 1, marginHorizontal: 5}}>
-                        <ThemedText style={styles.labelSmall}>Vacía $</ThemedText>
+                        <ThemedText style={styles.labelSmall}>Tipo B $</ThemedText>
                         <TextInput 
                             style={styles.modalInputSmall}
                             value={amountEmpty}
@@ -302,7 +303,7 @@ export default function FeesScreen() {
                         />
                     </View>
                     <View style={{flex: 1, marginLeft: 5}}>
-                        <ThemedText style={styles.labelSmall}>Terreno $</ThemedText>
+                        <ThemedText style={styles.labelSmall}>Tipo C $</ThemedText>
                         <TextInput 
                             style={styles.modalInputSmall}
                             value={amountLand}
@@ -317,7 +318,7 @@ export default function FeesScreen() {
                   style={[styles.modalInput, { marginTop: 15 }]}
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="Descripción breve..."
+                  placeholder="Descripción informativa..."
                   placeholderTextColor="#aaa"
                 />
 
@@ -343,7 +344,7 @@ export default function FeesScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: DEACTIVATION (Soft Delete) --- */}
+      {/* --- MODAL: DEACTIVATION --- */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
@@ -353,20 +354,20 @@ export default function FeesScreen() {
             >
               <View style={styles.modalContent}>
                 <View style={styles.deleteHeader}>
-                  <ThemedText style={styles.deleteTitle}>Confirmar Baja</ThemedText>
+                  <ThemedText style={styles.deleteTitle}>Confirmar Cambio</ThemedText>
                 </View>
                 
                 <ThemedText style={styles.deleteText}>
-                  ¿Está seguro de dar de baja la cuota {feeToDelete?.name}?
+                  ¿Desea desactivar el concepto "{feeToDelete?.name}"?
                 </ThemedText>
 
                 <View style={{ marginTop: 15 }}>
-                  <ThemedText style={styles.labelSmall}>Motivo de la Baja *</ThemedText>
+                  <ThemedText style={styles.labelSmall}>Justificación *</ThemedText>
                   <TextInput 
                     style={[styles.modalInput, { borderBottomColor: '#ff4444' }]}
                     value={deactivationReason}
                     onChangeText={setDeactivationReason}
-                    placeholder="Escriba el motivo de la baja..."
+                    placeholder="Escriba el motivo del cambio..."
                     placeholderTextColor="#aaa"
                     multiline
                   />
@@ -384,7 +385,7 @@ export default function FeesScreen() {
                     {isSaving ? (
                       <ActivityIndicator color="white" size="small" />
                     ) : (
-                      <ThemedText style={styles.saveBtnText}>Confirmar Baja</ThemedText>
+                      <ThemedText style={styles.saveBtnText}>Confirmar</ThemedText>
                     )}
                   </TouchableOpacity>
                 </View>

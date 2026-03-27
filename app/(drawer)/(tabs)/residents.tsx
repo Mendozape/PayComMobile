@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, 
   FlatList, 
@@ -17,9 +17,9 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router'; 
 
-// Corrected relative path to reach src/api/axios from app/(drawer)/
+// API base and endpoints
 import { API_BASE } from '../../../src/api/axios'; 
 
 import { ThemedText } from '@/components/themed-text';
@@ -42,7 +42,6 @@ interface User {
   roles?: Role[];
 }
 
-// Dynamic endpoints constructed from API_BASE
 const ENDPOINT = `${API_BASE}/usuarios`;
 const ROLES_ENDPOINT = `${API_BASE}/roles`;
 
@@ -69,8 +68,7 @@ export default function ResidentsScreen() {
   });
 
   /**
-   * 🛡️ FOCUS LOAD: Refreshes users and roles every time the screen gains focus.
-   * This ensures the resident list is always up to date.
+   * Refreshes users and roles on focus
    */
   useFocusEffect(
     useCallback(() => {
@@ -78,7 +76,6 @@ export default function ResidentsScreen() {
         try {
           const jsonValue = await AsyncStorage.getItem('userData');
           if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
-          // Concurrent fetch from dynamic endpoints
           await Promise.all([fetchUsers(), fetchRoles()]);
         } catch (e) {
           console.error("Initialization Error:", e);
@@ -87,10 +84,6 @@ export default function ResidentsScreen() {
         }
       };
       initialize();
-
-      return () => {
-        // Optional cleanup
-      };
     }, [])
   );
 
@@ -100,8 +93,7 @@ export default function ResidentsScreen() {
   const canDelete = can('Eliminar-usuarios');
 
   /**
-   * Fetches users list from dynamic API endpoint.
-   * Added cache busting via timestamp.
+   * Fetch users from API
    */
   const fetchUsers = async () => {
     setLoading(true);
@@ -121,8 +113,7 @@ export default function ResidentsScreen() {
   };
 
   /**
-   * Fetches available roles from dynamic API endpoint.
-   * Added cache busting via timestamp.
+   * Fetch roles from API
    */
   const fetchRoles = async () => {
     try {
@@ -144,7 +135,6 @@ export default function ResidentsScreen() {
 
   const openModal = (user: User | null = null) => {
     setEditingUser(user);
-
     if (user) {
       setFormData({
         name: user.name,
@@ -157,20 +147,14 @@ export default function ResidentsScreen() {
       });
     } else {
       setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        password: '',
-        password_confirmation: '',
-        comments: '',
-        role: ''
+        name: '', email: '', phone: '', password: '', password_confirmation: '', comments: '', role: ''
       });
     }
     setModalVisible(true);
   };
 
   /**
-   * Logic for Save/Update operations using dynamic endpoints.
+   * Saves or Updates user data
    */
   const handleSave = async () => {
     if (!formData.name || !formData.email || (!editingUser && !formData.password) || !formData.role) {
@@ -196,31 +180,19 @@ export default function ResidentsScreen() {
         phone: formData.phone,
         comments: formData.comments,
         roles: [formData.role],
-        ...(formData.password
-          ? {
-              password: formData.password,
-              password_confirmation: formData.password_confirmation
-            }
-          : {})
+        ...(formData.password ? { password: formData.password, password_confirmation: formData.password_confirmation } : {})
       };
 
-      let successMsg = '';
       if (editingUser) {
-        // Dynamic PUT
         await axios.put(`${ENDPOINT}/${editingUser.id}`, payload, config);
-        successMsg = 'Residente actualizado exitosamente.';
+        Alert.alert('Éxito', 'Residente actualizado exitosamente.');
       } else {
-        // Dynamic POST
         await axios.post(ENDPOINT, payload, config);
-        successMsg = 'Residente creado exitosamente.';
+        Alert.alert('Éxito', 'Residente creado exitosamente.');
       }
 
       setModalVisible(false);
-
-      InteractionManager.runAfterInteractions(() => {
-        Alert.alert('Éxito', successMsg);
-        fetchUsers();
-      });
+      fetchUsers();
     } catch (error: any) {
       const msg = error.response?.data?.message || 'Error al guardar el residente.';
       Alert.alert('Error', msg);
@@ -230,35 +202,36 @@ export default function ResidentsScreen() {
   };
 
   /**
-   * Handles deactivation or reactivation using dynamic endpoints.
+   * Handles Deactivation or Reactivation (Restore)
    */
   const toggleStatus = (user: User) => {
-    const isDeactivating = !user.deleted_at;
+    const isInactive = !!user.deleted_at;
 
     Alert.alert(
-      isDeactivating ? 'Confirmar Baja' : 'Confirmar Reactivación',
-      `¿Deseas ${isDeactivating ? 'dar de baja' : 'reactivar'} a ${user.name}?`,
+      isInactive ? 'Confirmar Reactivación' : 'Confirmar Baja',
+      `¿Deseas ${isInactive ? 'reactivar' : 'dar de baja'} a ${user.name}?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Confirmar',
+          style: isInactive ? 'default' : 'destructive',
           onPress: async () => {
             try {
               const token = await AsyncStorage.getItem('userToken');
-              const config = { headers: { Authorization: `Bearer ${token}` } };
+              const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
 
-              if (isDeactivating) {
-                // Dynamic DELETE
+              if (isInactive) {
+                // Restore (POST) - Mirroring your Web logic
+                await axios.post(`${ENDPOINT}/restore/${user.id}`, {}, config);
+                Alert.alert('Éxito', 'Residente reactivado correctamente.');
+              } else {
+                // Deactivate (DELETE)
                 await axios.delete(`${ENDPOINT}/${user.id}`, config);
                 Alert.alert('Éxito', 'Residente dado de baja.');
-              } else {
-                // Dynamic POST restore
-                await axios.post(`${ENDPOINT}/restore/${user.id}`, {}, config);
-                Alert.alert('Éxito', 'Residente reactivado.');
               }
               fetchUsers();
-            } catch {
-              Alert.alert('Error', 'No se pudo cambiar el estado del usuario.');
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo cambiar el estado del residente.');
             }
           }
         }
@@ -300,22 +273,13 @@ export default function ResidentsScreen() {
                 <ThemedText style={styles.userSub}>{item.email}</ThemedText>
 
                 <View style={styles.badgeRow}>
-                  <View
-                    style={[
-                      styles.badge,
-                      { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }
-                    ]}
-                  >
+                  <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
                     <ThemedText style={styles.badgeText}>
                       {item.deleted_at ? 'Inactivo' : 'Activo'}
                     </ThemedText>
                   </View>
-
                   {item.roles?.map((r, idx) => (
-                    <View
-                      key={idx}
-                      style={[styles.badge, { backgroundColor: '#007AFF', marginLeft: 5 }]}
-                    >
+                    <View key={idx} style={[styles.badge, { backgroundColor: '#007AFF', marginLeft: 5 }]}>
                       <ThemedText style={styles.badgeText}>{r.name}</ThemedText>
                     </View>
                   ))}
@@ -323,23 +287,16 @@ export default function ResidentsScreen() {
               </View>
 
               <View style={styles.actionRow}>
-                {canEdit && (
-                  <TouchableOpacity
-                    onPress={() => openModal(item)}
-                    disabled={!!item.deleted_at}
-                  >
-                    <IconSymbol
-                      name="pencil"
-                      size={22}
-                      color={item.deleted_at ? '#ccc' : '#007AFF'}
-                    />
+                {canEdit && !item.deleted_at && (
+                  <TouchableOpacity onPress={() => openModal(item)}>
+                    <IconSymbol name="pencil" size={22} color="#007AFF" />
                   </TouchableOpacity>
                 )}
 
                 {canDelete && (
                   <TouchableOpacity onPress={() => toggleStatus(item)}>
                     <IconSymbol
-                      name={item.deleted_at ? 'arrow.counterclockwise' : 'trash'}
+                      name={item.deleted_at ? "arrow.counterclockwise" : "trash"}
                       size={22}
                       color={item.deleted_at ? '#28a745' : '#ff4444'}
                     />
@@ -355,136 +312,45 @@ export default function ResidentsScreen() {
       <Modal visible={modalVisible} animationType="slide" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ width: '100%', alignItems: 'center' }}
-            >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%', alignItems: 'center' }}>
               <View style={styles.modalContent}>
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  style={styles.modalBody}
-                >
+                <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBody}>
                   <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
                     {editingUser ? 'Editar Residente' : 'Nuevo Residente'}
                   </ThemedText>
-
+                  
                   <ThemedText style={styles.labelSmall}>Nombre Completo *</ThemedText>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={formData.name}
-                    onChangeText={(v) => setFormData({ ...formData, name: v })}
-                    placeholder="Juan Pérez"
-                  />
+                  <TextInput style={styles.modalInput} value={formData.name} onChangeText={(v) => setFormData({ ...formData, name: v })} placeholder="Juan Pérez" />
 
                   <ThemedText style={styles.labelSmall}>Correo Electrónico *</ThemedText>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={formData.email}
-                    onChangeText={(v) => setFormData({ ...formData, email: v })}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    placeholder="correo@ejemplo.com"
-                  />
+                  <TextInput style={styles.modalInput} value={formData.email} onChangeText={(v) => setFormData({ ...formData, email: v })} keyboardType="email-address" autoCapitalize="none" placeholder="correo@ejemplo.com" />
 
                   <ThemedText style={styles.labelSmall}>Teléfono</ThemedText>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={formData.phone}
-                    onChangeText={(v) => setFormData({ ...formData, phone: v })}
-                    keyboardType="phone-pad"
-                    placeholder="10 dígitos"
-                  />
+                  <TextInput style={styles.modalInput} value={formData.phone} onChangeText={(v) => setFormData({ ...formData, phone: v })} keyboardType="phone-pad" placeholder="10 dígitos" />
 
-                  <ThemedText style={styles.labelSmall}>Rol *</ThemedText>
+                  <ThemedText style={styles.labelSmall}>Role *</ThemedText>
                   <View style={styles.rolePickerRow}>
                     {roles.map((r) => (
-                      <TouchableOpacity
-                        key={r.id}
-                        style={[
-                          styles.roleChip,
-                          formData.role === r.name && styles.roleChipActive
-                        ]}
-                        onPress={() =>
-                          setFormData({ ...formData, role: r.name })
-                        }
-                      >
-                        <ThemedText
-                          style={[
-                            styles.roleChipText,
-                            formData.role === r.name && { color: 'white' }
-                          ]}
-                        >
-                          {r.name}
-                        </ThemedText>
+                      <TouchableOpacity key={r.id} style={[styles.roleChip, formData.role === r.name && styles.roleChipActive]} onPress={() => setFormData({ ...formData, role: r.name })}>
+                        <ThemedText style={[styles.roleChipText, formData.role === r.name && { color: 'white' }]}>{r.name}</ThemedText>
                       </TouchableOpacity>
                     ))}
                   </View>
 
                   <ThemedText style={styles.labelSmall}>Comentarios</ThemedText>
-                  <TextInput
-                    style={[styles.modalInput, styles.textArea]}
-                    value={formData.comments}
-                    onChangeText={(v) =>
-                      setFormData({ ...formData, comments: v })
-                    }
-                    multiline
-                    placeholder="Notas internas..."
-                  />
+                  <TextInput style={[styles.modalInput, styles.textArea]} value={formData.comments} onChangeText={(v) => setFormData({ ...formData, comments: v })} multiline placeholder="Notas internas..." />
 
                   <View style={styles.passwordSection}>
-                    <ThemedText style={styles.labelSmall}>
-                      {editingUser ? 'Nueva Contraseña (Opcional)' : 'Contraseña *'}
-                    </ThemedText>
-                    <TextInput
-                      style={styles.modalInput}
-                      value={formData.password}
-                      onChangeText={(v) =>
-                        setFormData({ ...formData, password: v })
-                      }
-                      secureTextEntry
-                      placeholder="********"
-                    />
-
-                    <ThemedText style={styles.labelSmall}>
-                      Confirmar Contraseña *
-                    </ThemedText>
-                    <TextInput
-                      style={styles.modalInput}
-                      value={formData.password_confirmation}
-                      onChangeText={(v) =>
-                        setFormData({
-                          ...formData,
-                          password_confirmation: v
-                        })
-                      }
-                      secureTextEntry
-                      placeholder="********"
-                    />
+                    <ThemedText style={styles.labelSmall}>{editingUser ? 'Nueva Contraseña (Opcional)' : 'Contraseña *'}</ThemedText>
+                    <TextInput style={styles.modalInput} value={formData.password} onChangeText={(v) => setFormData({ ...formData, password: v })} secureTextEntry placeholder="********" />
+                    <ThemedText style={styles.labelSmall}>Confirmar Contraseña *</ThemedText>
+                    <TextInput style={styles.modalInput} value={formData.password_confirmation} onChangeText={(v) => setFormData({ ...formData, password_confirmation: v })} secureTextEntry placeholder="********" />
                   </View>
                 </ScrollView>
-
                 <View style={styles.modalFooter}>
-                  <TouchableOpacity
-                    onPress={() => setModalVisible(false)}
-                    style={styles.cancelBtn}
-                  >
-                    <ThemedText style={styles.cancelLabel}>
-                      Cancelar
-                    </ThemedText>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.saveBtn}
-                    onPress={handleSave}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <ActivityIndicator color="white" />
-                    ) : (
-                      <ThemedText style={styles.saveBtnText}>
-                        Guardar
-                      </ThemedText>
-                    )}
+                  <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}><ThemedText style={styles.cancelLabel}>Cancelar</ThemedText></TouchableOpacity>
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSaving}>
+                    {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={styles.saveBtnText}>Guardar</ThemedText>}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -502,7 +368,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12, color: '#333' },
   addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, justifyContent: 'center' },
   userItem: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
-  inactiveItem: { opacity: 0.6 },
+  inactiveItem: { backgroundColor: '#fff5f5' },
   userName: { fontSize: 16, fontWeight: 'bold' },
   userSub: { fontSize: 13, color: '#666' },
   actionRow: { flexDirection: 'row', gap: 20, marginLeft: 10 },

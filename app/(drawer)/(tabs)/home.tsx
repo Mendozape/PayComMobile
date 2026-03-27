@@ -123,7 +123,7 @@ export default function HomeScreen() {
         }
       >
         <ThemedText type="title" style={styles.welcomeText}>
-          ¡Bienvenido, {user?.name?.split(' ')[0]}!
+          ¡Bienvenido: {user?.name?.split(' ')[0]}!
         </ThemedText>
         <ThemedText style={styles.subtitle}>Residencial Prados de la Huerta</ThemedText>
 

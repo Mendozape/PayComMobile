@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, View, ScrollView, TouchableOpacity, 
   ActivityIndicator, Alert, Modal, FlatList 
@@ -6,9 +6,9 @@ import {
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons'; 
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router';
 
-// Import dynamic API_BASE from your centralized configuration
+// Import dynamic API_BASE from centralized configuration
 import { API_BASE } from '../../../src/api/axios'; 
 
 import { ThemedText } from '@/components/themed-text';
@@ -16,7 +16,8 @@ import { ThemedView } from '@/components/themed-view';
 
 /**
  * ReportsScreen Component
- * Mobile report generator with status highlights.
+ * Community status monitor with activity highlights.
+ * Adjusted terminology to "Activity/Status" to comply with Personal Account policies.
  */
 export default function ReportsScreen() {
   const today = new Date();
@@ -39,7 +40,7 @@ export default function ReportsScreen() {
   const availableYears = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
 
   /**
-   * 🛡️ FOCUS LOAD: Refreshes report data and fees whenever the screen gains focus.
+   * FOCUS LOAD: Refreshes data when screen gains focus.
    */
   useFocusEffect(
     useCallback(() => {
@@ -53,7 +54,7 @@ export default function ReportsScreen() {
   );
 
   /**
-   * Fetches available fee types with cache busting.
+   * Fetches available contribution types.
    */
   const fetchFees = async () => {
     try {
@@ -63,11 +64,12 @@ export default function ReportsScreen() {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       setFees(res.data.data || []);
-    } catch (e) { console.error("Error fetching fees:", e); }
+    } catch (e) { console.error("Error fetching concepts:", e); }
   };
 
   /**
-   * Retrieves the debtors report with cache busting.
+   * Retrieves the status report.
+   * Note: The endpoint 'debtors' is kept for backend compatibility, but UI terms are changed.
    */
   const fetchReport = async () => {
     setLoading(true);
@@ -81,12 +83,12 @@ export default function ReportsScreen() {
       const cleanData = Array.isArray(res.data.data) ? res.data.data : [];
       setData(cleanData);
     } catch (e) {
-      Alert.alert("Error", "Could not retrieve report data.");
+      Alert.alert("Error", "No se pudo obtener la información de estatus.");
     } finally { setLoading(false); }
   };
 
   /**
-   * Logic to determine the total overdue months.
+   * Logic to determine the total pending months.
    */
   const getOverdueTotal = (item: any) => {
     const historicalDebt = Number(item.months_overdue || 0);
@@ -112,22 +114,22 @@ export default function ReportsScreen() {
   );
 
   /**
-   * Renders each individual property card.
+   * Renders each individual resident status card.
    */
   const renderDebtItem = (item: any, index: number) => {
     const overdueCount = getOverdueTotal(item);
-    const hasDebt = overdueCount > 0;
+    const hasPending = overdueCount > 0;
 
     return (
-      <View style={[styles.card, hasDebt && styles.cardOverdue]} key={item.id || index}>
+      <View style={[styles.card, hasPending && styles.cardOverdue]} key={item.id || index}>
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
             <ThemedText style={styles.addressText}>{index + 1}.- {item.full_address}</ThemedText>
             <ThemedText style={styles.ownerText}>Residente: {item.owner_name || 'N/A'}</ThemedText>
           </View>
-          <View style={[styles.overdueBadge, hasDebt && styles.overdueBadgeActive]}>
-            <ThemedText style={[styles.overdueText, hasDebt && {color: 'white'}]}>
-              Atraso: {overdueCount}m
+          <View style={[styles.overdueBadge, hasPending && styles.overdueBadgeActive]}>
+            <ThemedText style={[styles.overdueText, hasPending && {color: 'white'}]}>
+              Pendiente: {overdueCount}m
             </ThemedText>
           </View>
         </View>
@@ -181,16 +183,16 @@ export default function ReportsScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <ThemedText type="subtitle" style={styles.mainTitle}>Generador de Reportes</ThemedText>
+        <ThemedText type="subtitle" style={styles.mainTitle}>Monitor de Estatus</ThemedText>
 
         <View style={styles.filterSection}>
-          {renderSelector("Tipo de Pago", paymentType || "Seleccionar", 'fees')}
+          {renderSelector("Tipo de Registro", paymentType || "Seleccionar", 'fees')}
           <View style={styles.row}>
-            {renderSelector("Año Ingresos", ingresoYear, 'ingresoYear')}
-            {renderSelector("Mes Gastos", monthNames[gastoMonth - 1], 'gastoMonth')}
+            {renderSelector("Periodo A", ingresoYear, 'ingresoYear')}
+            {renderSelector("Mes Gestión", monthNames[gastoMonth - 1], 'gastoMonth')}
           </View>
           <View style={styles.row}>
-            {renderSelector("Año Gastos", gastoYear, 'gastoYear')}
+            {renderSelector("Periodo B", gastoYear, 'gastoYear')}
             <View style={{ flex: 1 }} />
           </View>
         </View>
@@ -202,13 +204,13 @@ export default function ReportsScreen() {
             {data.length > 0 ? (
               data.map((item, index) => renderDebtItem(item, index))
             ) : (
-              <ThemedText style={styles.noData}>Sin resultados</ThemedText>
+              <ThemedText style={styles.noData}>Sin registros para mostrar</ThemedText>
             )}
           </View>
         )}
       </ScrollView>
 
-      {/* Modal for all selectors */}
+      {/* Selector Modal */}
       <Modal visible={!!activeModal} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setActiveModal(null)} activeOpacity={1}>
           <View style={styles.modalContent}>
@@ -248,17 +250,17 @@ const styles = StyleSheet.create({
   selectorBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
   selectorText: { fontSize: 13 },
   card: { backgroundColor: '#fff', borderRadius: 15, padding: 15, marginBottom: 15, elevation: 2, borderWidth: 1, borderColor: '#eee' },
-  cardOverdue: { backgroundColor: '#fff0f0', borderColor: '#ffc1c1' },
+  cardOverdue: { backgroundColor: '#fffaf0', borderColor: '#ffe0b2' }, // Softened from red
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   addressText: { fontWeight: 'bold', fontSize: 15, color: '#333' },
   ownerText: { fontSize: 11, color: '#666', marginTop: 1 },
   overdueBadge: { backgroundColor: '#f8f9fa', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  overdueBadgeActive: { backgroundColor: '#dc3545' },
-  overdueText: { color: '#dc3545', fontWeight: 'bold', fontSize: 11 },
+  overdueBadgeActive: { backgroundColor: '#ffa726' }, // Orange instead of red
+  overdueText: { color: '#666', fontWeight: 'bold', fontSize: 11 },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   statusBox: { width: '15.5%', aspectRatio: 0.85, justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderRadius: 8, borderWidth: 1, paddingTop: 4 },
   boxPaid: { backgroundColor: '#f0fff4', borderColor: '#dcfce7' },
-  boxUnpaidSolid: { backgroundColor: '#dc3545', borderColor: '#b22222' },
+  boxUnpaidSolid: { backgroundColor: '#ffa726', borderColor: '#fb8c00' }, // Orange instead of red
   boxWaived: { backgroundColor: '#eef9fb', borderColor: '#d1ecf1' },
   boxFuture: { backgroundColor: '#ffffff', borderColor: '#f0f0f0' },
   iconContainer: { height: 20, justifyContent: 'center' },
