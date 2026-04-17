@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DeviceEventEmitter, StyleSheet, View, TextInput, FlatList, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { DeviceEventEmitter, StyleSheet, View, TextInput, FlatList, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator, useColorScheme } from 'react-native';
 import { useLocalSearchParams, Stack, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,10 +9,19 @@ import { API_BASE } from '../../../../src/api/axios';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { getEcho, initEcho, getPrefixedChannel } from '@/services/echo'; // ✅ IMPORT
+import { getEcho, initEcho, getPrefixedChannel } from '@/services/echo';
 
+/**
+ * ChatDetailScreen
+ * Manages real-time messaging using Laravel Echo.
+ * Dark Mode Fix: Bubble and text colors are now dynamic to ensure visibility.
+ * Code comments in English.
+ */
 export default function ChatDetailScreen() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const { id, name } = useLocalSearchParams();
+  
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -46,16 +55,12 @@ export default function ChatDetailScreen() {
         const echo = getEcho() || await initEcho();
 
         if (echo && currentUserRef.current) {
-          // ✅ FIX: SORT IDS + PREFIX
           const ids = [
             Number(currentUserRef.current.id),
             Number(id)
           ].sort((a, b) => a - b);
 
           const chatChannel = getPrefixedChannel(`chat.${ids.join('.')}`);
-
-          console.log('🔥 SUBSCRIBING TO:', chatChannel);
-
           channelRef.current = echo.private(chatChannel);
 
           channelRef.current
@@ -75,10 +80,6 @@ export default function ChatDetailScreen() {
                   }))
                 );
               }
-            })
-            // ✅ EXTRA DEBUG (optional but useful)
-            .listen('.MessageSent', (e: any) => {
-              //console.log('💬 DIRECT MESSAGE RECEIVED:', e);
             });
 
           echoSetupDone.current = true;
@@ -86,7 +87,6 @@ export default function ChatDetailScreen() {
 
         msgSub = DeviceEventEmitter.addListener('new-message-received', (e: any) => {
           const senderId = e.message?.sender_id || e.sender_id;
-
           if (Number(senderId) === Number(id)) {
             setMessages(prev => {
               if (prev.find(m => m.id === e.message.id)) return prev;
@@ -102,7 +102,6 @@ export default function ChatDetailScreen() {
     return () => {
       if (msgSub) msgSub.remove();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
       const echo = getEcho();
       if (echo && channelRef.current) {
         echo.leave(channelRef.current.name);
@@ -114,11 +113,9 @@ export default function ChatDetailScreen() {
 
   const handleTextChange = (text: string) => {
     setMessage(text);
-
     const now = Date.now();
     if (now - lastTypingSent.current > 2500 && text.length > 0) {
       lastTypingSent.current = now;
-
       AsyncStorage.getItem('userToken').then(token => {
         axios.post(`${API_BASE}/chat/typing`, 
           { receiver_id: id }, 
@@ -131,38 +128,28 @@ export default function ChatDetailScreen() {
   const fetchMessages = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      
       const res = await axios.get(`${API_BASE}/chat/messages/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-
       setMessages(res.data.messages.reverse());
       setLoading(false);
-      
     } catch (e) {
       setLoading(false);
-      console.error("Fetch Messages Error:", e);
     }
   };
 
   const handleSend = async () => {
     if (!message.trim()) return;
-
     const content = message.trim();
     setMessage('');
-
     const token = await AsyncStorage.getItem('userToken');
-
     try {
       const res = await axios.post(`${API_BASE}/chat/send`, 
         { receiver_id: id, content }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
       setMessages(prev => [res.data.message, ...prev]);
-    } catch (e) {
-      console.error("Send Message Error:", e);
-    }
+    } catch (e) {}
   };
 
   if (loading) {
@@ -180,7 +167,7 @@ export default function ChatDetailScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      <ThemedView style={styles.container}>
+      <ThemedView style={[styles.container, { backgroundColor: isDark ? '#000' : '#f4f6f9' }]}>
         <Stack.Screen options={{ title: String(name) }} />
 
         <FlatList
@@ -189,16 +176,30 @@ export default function ChatDetailScreen() {
           keyExtractor={m => m.id.toString()}
           renderItem={({ item: m }) => {
             const isMe = Number(m.sender_id) === Number(currentUserRef.current?.id);
+            
+            // DYNAMIC COLORS FOR BUBBLES AND TEXT
+            const myBubbleColor = isDark ? '#056162' : '#dcf8c6';
+            const myTextColor = isDark ? '#fff' : '#000';
+            const theirBubbleColor = isDark ? '#262626' : '#fff';
+            const theirTextColor = isDark ? '#fff' : '#000';
+
             return (
               <View style={[styles.msgWrap, isMe ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
-                <View style={[styles.bubble, isMe ? styles.myBubble : styles.theirBubble]}>
-                  <ThemedText>{m.content}</ThemedText>
+                <View style={[
+                  styles.bubble, 
+                  isMe 
+                    ? { backgroundColor: myBubbleColor, borderBottomRightRadius: 4 } 
+                    : { backgroundColor: theirBubbleColor, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: isDark ? '#333' : '#e0e0e0' }
+                ]}>
+                  <ThemedText style={{ color: isMe ? myTextColor : theirTextColor }}>
+                    {m.content}
+                  </ThemedText>
                 </View>
                 <View style={styles.status}>
-                  <ThemedText style={styles.time}>
+                  <ThemedText style={[styles.time, { color: isDark ? '#888' : '#6c757d' }]}>
                     {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </ThemedText>
-                  {isMe && <ThemedText style={styles.check}>{m.read_at ? ' ✓✓' : ' ✓'}</ThemedText>}
+                  {isMe && <ThemedText style={[styles.check, { color: isDark ? '#888' : '#6c757d' }]}>{m.read_at ? ' ✓✓' : ' ✓'}</ThemedText>}
                 </View>
               </View>
             );
@@ -206,14 +207,14 @@ export default function ChatDetailScreen() {
         />
 
         {isOtherTyping && (
-          <ThemedText style={styles.typingIndicator}>
+          <ThemedText style={[styles.typingIndicator, { color: isDark ? '#aaa' : '#666' }]}>
             {name} está escribiendo...
           </ThemedText>
         )}
 
-        <View style={styles.inputArea}>
+        <View style={[styles.inputArea, { backgroundColor: isDark ? '#121212' : '#fff', borderTopColor: isDark ? '#333' : '#dee2e6' }]}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: isDark ? '#262626' : '#f8f9fa', color: isDark ? '#fff' : '#333' }]}
             placeholder="Escribe un mensaje..."
             placeholderTextColor="#999"
             value={message}
@@ -230,16 +231,14 @@ export default function ChatDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f9' },
+  container: { flex: 1 },
   msgWrap: { width: '100%', paddingHorizontal: 12, marginVertical: 2 },
   bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, maxWidth: '85%' },
-  myBubble: { backgroundColor: '#dcf8c6', borderBottomRightRadius: 4 },
-  theirBubble: { backgroundColor: '#fff', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#e0e0e0' },
   status: { flexDirection: 'row', alignSelf: 'flex-end', alignItems: 'center', marginTop: 4 },
-  time: { fontSize: 11, color: '#6c757d' },
-  check: { fontSize: 13, marginLeft: 4, fontWeight: 'bold', color: '#6c757d' },
-  typingIndicator: { padding: 10, fontSize: 12, fontStyle: 'italic', color: '#666' },
-  inputArea: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#dee2e6' },
-  input: { flex: 1, backgroundColor: '#f8f9fa', borderRadius: 22, paddingHorizontal: 16, minHeight: 40, maxHeight: 100, fontSize: 16, color: '#333' },
+  time: { fontSize: 11 },
+  check: { fontSize: 13, marginLeft: 4, fontWeight: 'bold' },
+  typingIndicator: { padding: 10, fontSize: 12, fontStyle: 'italic' },
+  inputArea: { flexDirection: 'row', padding: 10, alignItems: 'center', borderTopWidth: 1 },
+  input: { flex: 1, borderRadius: 22, paddingHorizontal: 16, minHeight: 40, maxHeight: 100, fontSize: 16 },
   send: { backgroundColor: '#28a745', width: 44, height: 44, borderRadius: 22, marginLeft: 10, justifyContent: 'center', alignItems: 'center' }
 });

@@ -11,12 +11,13 @@ const MAPPING = {
   'house.fill': 'home',
   'line.3.horizontal': 'menu',
   'chevron.right': 'chevron-right',
+  'chevron.left': 'chevron-left', // <-- ADDED FOR BACK BUTTONS
   'chevron.down': 'keyboard-arrow-down',
-  'chevron.up': 'keyboard-arrow-up', // <-- ADDED FOR COLLAPSIBLE
+  'chevron.up': 'keyboard-arrow-up', 
   'chevron.left.forwardslash.chevron.right': 'code',
   'magnifyingglass': 'search',
   'arrow.left': 'arrow-back',
-  'gearshape.fill': 'settings', // <-- ADDED FOR CONFIGURATION HEADER
+  'gearshape.fill': 'settings', 
   
   // --- Actions ---
   'plus': 'add',

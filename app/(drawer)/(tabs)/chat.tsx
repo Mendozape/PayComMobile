@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { StyleSheet, FlatList, TouchableOpacity, View, TextInput, ActivityIndicator, RefreshControl, DeviceEventEmitter } from 'react-native';
+import { StyleSheet, FlatList, TouchableOpacity, View, TextInput, ActivityIndicator, RefreshControl, DeviceEventEmitter, useColorScheme } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -14,9 +14,13 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 /**
  * ChatContactsScreen Component
  * Displays a list of available contacts and their unread message counts.
+ * Supports Light and Dark modes.
  */
 export default function ChatContactsScreen() {
   const router = useRouter();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,7 +31,7 @@ export default function ChatContactsScreen() {
 
   /**
    * Fetches contact list with unread message counts from the server.
-   * Uses dynamic API_BASE for environment compatibility.
+   * Handles errors related to network or authentication.
    */
   const fetchContacts = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -41,14 +45,17 @@ export default function ChatContactsScreen() {
         headers: { 
           Authorization: `Bearer ${token}`,
           Accept: 'application/json' 
-        }
+        },
+        timeout: 5000 // Added timeout to prevent infinite hang
       });
 
       const usersData = res.data.users?.data || res.data.users || [];
       setContacts(usersData);
       
     } catch (e) {
-      console.error("Fetch Contacts Error:", e);
+      // Diagnostic log for the Network Error
+      console.error("Fetch Contacts Error:", e.message);
+      console.error("Attempted URL:", `${API_BASE}/chat/contacts`);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -79,7 +86,7 @@ export default function ChatContactsScreen() {
         }, 1000);
       });
 
-      // ESTO ES LO UNICO QUE AGREGUÉ: Para que se limpie el badge cuando el otro file avisa
+      // Clear badges when another screen signals that messages were read
       const readListener = DeviceEventEmitter.addListener('chat-messages-read', () => {
         if (isFocusedRef.current) fetchContacts(true);
       });
@@ -105,12 +112,12 @@ export default function ChatContactsScreen() {
   return (
     <ThemedView style={{ flex: 1 }}>
       {/* Search Input Section */}
-      <View style={styles.searchBox}>
-        <IconSymbol name="magnifyingglass" size={20} color="#666" />
+      <View style={[styles.searchBox, { backgroundColor: isDark ? '#2c2c2e' : '#f0f0f0' }]}>
+        <IconSymbol name="magnifyingglass" size={20} color={isDark ? '#8e8e93' : '#666'} />
         <TextInput
-          style={styles.input}
-          placeholder="Buscar contactos..."
-          placeholderTextColor="#999"
+          style={[styles.input, { color: isDark ? '#fff' : '#000' }]}
+          placeholder="Search contacts..."
+          placeholderTextColor={isDark ? '#8e8e93' : '#999'}
           value={search}
           onChangeText={setSearch}
         />
@@ -134,7 +141,7 @@ export default function ChatContactsScreen() {
           }
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.item}
+              style={[styles.item, { borderBottomColor: isDark ? '#38383a' : '#eee' }]}
               onPress={() =>
                 router.push({
                   pathname: "/chat/[id]",
@@ -151,7 +158,9 @@ export default function ChatContactsScreen() {
               
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.name}>{item.name}</ThemedText>
-                <ThemedText style={styles.email}>{item.email}</ThemedText>
+                <ThemedText style={[styles.email, { color: isDark ? '#8e8e93' : '#888' }]}>
+                  {item.email}
+                </ThemedText>
               </View>
               
               {/* Unread Message Badge Indicator */}
@@ -171,13 +180,58 @@ export default function ChatContactsScreen() {
 }
 
 const styles = StyleSheet.create({
-  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', margin: 15, paddingHorizontal: 12, borderRadius: 10, height: 45 },
-  input: { flex: 1, marginLeft: 10, fontSize: 16, color: '#000' },
-  item: { flexDirection: 'row', padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
-  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#007bff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  avatarText: { color: 'white', fontWeight: 'bold', fontSize: 18 },
-  name: { fontSize: 16, fontWeight: 'bold', color: '#000' },
-  email: { fontSize: 13, color: '#888' },
-  badge: { backgroundColor: '#ff3b30', borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
-  badgeText: { color: 'white', fontSize: 11, fontWeight: 'bold' }
+  searchBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    margin: 15, 
+    paddingHorizontal: 12, 
+    borderRadius: 10, 
+    height: 45 
+  },
+  input: { 
+    flex: 1, 
+    marginLeft: 10, 
+    fontSize: 16 
+  },
+  item: { 
+    flexDirection: 'row', 
+    padding: 15, 
+    borderBottomWidth: 1, 
+    alignItems: 'center' 
+  },
+  avatar: { 
+    width: 50, 
+    height: 50, 
+    borderRadius: 25, 
+    backgroundColor: '#007bff', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 12 
+  },
+  avatarText: { 
+    color: 'white', 
+    fontWeight: 'bold', 
+    fontSize: 18 
+  },
+  name: { 
+    fontSize: 16, 
+    fontWeight: 'bold' 
+  },
+  email: { 
+    fontSize: 13 
+  },
+  badge: { 
+    backgroundColor: '#ff3b30', 
+    borderRadius: 10, 
+    minWidth: 20, 
+    height: 20, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 6 
+  },
+  badgeText: { 
+    color: 'white', 
+    fontSize: 11, 
+    fontWeight: 'bold' 
+  }
 });

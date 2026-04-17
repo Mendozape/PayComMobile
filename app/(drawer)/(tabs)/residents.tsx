@@ -6,18 +6,19 @@ import {
   View, 
   TextInput, 
   ActivityIndicator, 
-  Alert, 
   Modal,
   KeyboardAvoidingView, 
   Platform, 
   TouchableWithoutFeedback, 
   Keyboard,
   ScrollView,
-  InteractionManager
+  useColorScheme,
+  Alert
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router'; 
+import Toast from 'react-native-toast-message';
 
 // API base and endpoints
 import { API_BASE } from '../../../src/api/axios'; 
@@ -46,6 +47,9 @@ const ENDPOINT = `${API_BASE}/usuarios`;
 const ROLES_ENDPOINT = `${API_BASE}/roles`;
 
 export default function ResidentsScreen() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -57,6 +61,7 @@ export default function ResidentsScreen() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
+  // Form state
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -64,8 +69,11 @@ export default function ResidentsScreen() {
     password: '',
     password_confirmation: '',
     comments: '',
-    role: ''
+    roleId: 0 
   });
+
+  // ⚠️ Inline validation error state
+  const [errors, setErrors] = useState<any>({});
 
   /**
    * Refreshes users and roles on focus
@@ -92,9 +100,6 @@ export default function ResidentsScreen() {
   const canEdit = can('Editar-usuarios');
   const canDelete = can('Eliminar-usuarios');
 
-  /**
-   * Fetch users from API
-   */
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -112,9 +117,6 @@ export default function ResidentsScreen() {
     }
   };
 
-  /**
-   * Fetch roles from API
-   */
   const fetchRoles = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -134,6 +136,7 @@ export default function ResidentsScreen() {
   );
 
   const openModal = (user: User | null = null) => {
+    setErrors({});
     setEditingUser(user);
     if (user) {
       setFormData({
@@ -143,29 +146,42 @@ export default function ResidentsScreen() {
         password: '',
         password_confirmation: '',
         comments: user.comments || '',
-        role: user.roles && user.roles.length > 0 ? user.roles[0].name : ''
+        roleId: user.roles && user.roles.length > 0 ? user.roles[0].id : 0
       });
     } else {
       setFormData({
-        name: '', email: '', phone: '', password: '', password_confirmation: '', comments: '', role: ''
+        name: '', email: '', phone: '', password: '', password_confirmation: '', comments: '', roleId: 0
       });
     }
     setModalVisible(true);
   };
 
   /**
-   * Saves or Updates user data
+   * Validation Logic
    */
-  const handleSave = async () => {
-    if (!formData.name || !formData.email || (!editingUser && !formData.password) || !formData.role) {
-      Alert.alert('Atención', 'Por favor completa los campos obligatorios (*)');
-      return;
+  const validateForm = () => {
+    let tempErrors: any = {};
+    if (!formData.name.trim()) tempErrors.name = "El nombre es obligatorio.";
+    if (!formData.email.trim()) tempErrors.email = "El correo es obligatorio.";
+    if (!formData.roleId) tempErrors.roleId = "Debes seleccionar un rol.";
+    
+    if (!editingUser && !formData.password) {
+      tempErrors.password = "La contraseña es obligatoria.";
+    }
+    
+    if (formData.password && formData.password !== formData.password_confirmation) {
+      tempErrors.password_confirmation = "Las contraseñas no coinciden.";
     }
 
-    if (formData.password !== formData.password_confirmation) {
-      Alert.alert('Error', 'Las contraseñas no coinciden.');
-      return;
-    }
+    setErrors(tempErrors);
+    return Object.keys(tempErrors).length === 0;
+  };
+
+  /**
+   * Saves or Updates user data.
+   */
+  const handleSave = async () => {
+    if (!validateForm()) return;
 
     setIsSaving(true);
     try {
@@ -179,34 +195,33 @@ export default function ResidentsScreen() {
         email: formData.email,
         phone: formData.phone,
         comments: formData.comments,
-        roles: [formData.role],
+        roles: [formData.roleId],
         ...(formData.password ? { password: formData.password, password_confirmation: formData.password_confirmation } : {})
       };
 
       if (editingUser) {
         await axios.put(`${ENDPOINT}/${editingUser.id}`, payload, config);
-        Alert.alert('Éxito', 'Residente actualizado exitosamente.');
+        Toast.show({ type: 'success', text1: '¡Éxito!', text2: 'Residente actualizado' });
       } else {
         await axios.post(ENDPOINT, payload, config);
-        Alert.alert('Éxito', 'Residente creado exitosamente.');
+        Toast.show({ type: 'success', text1: '¡Éxito!', text2: 'Residente creado' });
       }
 
       setModalVisible(false);
       fetchUsers();
     } catch (error: any) {
-      const msg = error.response?.data?.message || 'Error al guardar el residente.';
-      Alert.alert('Error', msg);
+      const msg = error.response?.data?.message || 'Error al guardar.';
+      setErrors({ server: msg });
     } finally {
       setIsSaving(false);
     }
   };
 
   /**
-   * Handles Deactivation or Reactivation (Restore)
+   * Status change Alert
    */
   const toggleStatus = (user: User) => {
     const isInactive = !!user.deleted_at;
-
     Alert.alert(
       isInactive ? 'Confirmar Reactivación' : 'Confirmar Baja',
       `¿Deseas ${isInactive ? 'reactivar' : 'dar de baja'} a ${user.name}?`,
@@ -214,24 +229,18 @@ export default function ResidentsScreen() {
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Confirmar',
-          style: isInactive ? 'default' : 'destructive',
           onPress: async () => {
             try {
               const token = await AsyncStorage.getItem('userToken');
-              const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
-
+              const config = { headers: { Authorization: `Bearer ${token}` } };
               if (isInactive) {
-                // Restore (POST) - Mirroring your Web logic
                 await axios.post(`${ENDPOINT}/restore/${user.id}`, {}, config);
-                Alert.alert('Éxito', 'Residente reactivado correctamente.');
               } else {
-                // Deactivate (DELETE)
                 await axios.delete(`${ENDPOINT}/${user.id}`, config);
-                Alert.alert('Éxito', 'Residente dado de baja.');
               }
               fetchUsers();
             } catch (error) {
-              Alert.alert('Error', 'No se pudo cambiar el estado del residente.');
+              Toast.show({ type: 'error', text1: 'Error' });
             }
           }
         }
@@ -239,15 +248,11 @@ export default function ResidentsScreen() {
     );
   };
 
-  if (!isReady) {
-    return <ActivityIndicator size="large" color="#28a745" style={{ flex: 1 }} />;
-  }
-
   return (
     <ThemedView style={styles.container}>
       <View style={styles.headerActions}>
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { backgroundColor: isDark ? '#2c2c2e' : '#f2f2f2', color: isDark ? '#fff' : '#333' }]}
           placeholder="Buscar residente..."
           placeholderTextColor="#888"
           value={search}
@@ -267,39 +272,23 @@ export default function ResidentsScreen() {
           data={filteredUsers}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={[styles.userItem, item.deleted_at && styles.inactiveItem]}>
+            <View style={[styles.userItem, { borderBottomColor: isDark ? '#333' : '#eee' }, item.deleted_at && styles.inactiveItem]}>
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.userName}>{item.name}</ThemedText>
-                <ThemedText style={styles.userSub}>{item.email}</ThemedText>
-
+                <ThemedText style={[styles.userSub, { color: isDark ? '#8e8e93' : '#666' }]}>{item.email}</ThemedText>
                 <View style={styles.badgeRow}>
                   <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
-                    <ThemedText style={styles.badgeText}>
-                      {item.deleted_at ? 'Inactivo' : 'Activo'}
-                    </ThemedText>
+                    <ThemedText style={styles.badgeText}>{item.deleted_at ? 'Inactivo' : 'Activo'}</ThemedText>
                   </View>
-                  {item.roles?.map((r, idx) => (
-                    <View key={idx} style={[styles.badge, { backgroundColor: '#007AFF', marginLeft: 5 }]}>
-                      <ThemedText style={styles.badgeText}>{r.name}</ThemedText>
-                    </View>
-                  ))}
                 </View>
               </View>
-
               <View style={styles.actionRow}>
                 {canEdit && !item.deleted_at && (
-                  <TouchableOpacity onPress={() => openModal(item)}>
-                    <IconSymbol name="pencil" size={22} color="#007AFF" />
-                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => openModal(item)}><IconSymbol name="pencil" size={22} color="#007AFF" /></TouchableOpacity>
                 )}
-
                 {canDelete && (
                   <TouchableOpacity onPress={() => toggleStatus(item)}>
-                    <IconSymbol
-                      name={item.deleted_at ? "arrow.counterclockwise" : "trash"}
-                      size={22}
-                      color={item.deleted_at ? '#28a745' : '#ff4444'}
-                    />
+                    <IconSymbol name={item.deleted_at ? "arrow.counterclockwise" : "trash"} size={22} color={item.deleted_at ? '#28a745' : '#ff4444'} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -308,46 +297,60 @@ export default function ResidentsScreen() {
         />
       )}
 
-      {/* --- MODAL --- */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%', alignItems: 'center' }}>
-              <View style={styles.modalContent}>
-                <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBody}>
-                  <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
-                    {editingUser ? 'Editar Residente' : 'Nuevo Residente'}
-                  </ThemedText>
+            {/* ⚠️ KeyboardAvoidingView set to height or padding depends on platform */}
+            <KeyboardAvoidingView 
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+              style={styles.keyboardView}
+            >
+              <View style={[styles.modalContent, { backgroundColor: isDark ? '#1c1c1e' : 'white' }]}>
+                {/* ⚠️ flex: 1 here allows the ScrollView to take available space and scroll properly */}
+                <ScrollView 
+                  showsVerticalScrollIndicator={false} 
+                  style={styles.scrollView}
+                  contentContainerStyle={styles.modalBody}
+                >
+                  <ThemedText type="subtitle" style={{ marginBottom: 15 }}>{editingUser ? 'Editar Residente' : 'Nuevo Residente'}</ThemedText>
                   
-                  <ThemedText style={styles.labelSmall}>Nombre Completo *</ThemedText>
-                  <TextInput style={styles.modalInput} value={formData.name} onChangeText={(v) => setFormData({ ...formData, name: v })} placeholder="Juan Pérez" />
+                  {/* Name Field */}
+                  <ThemedText style={[styles.labelSmall, errors.name && styles.errorLabel]}>Nombre Completo *</ThemedText>
+                  <TextInput style={[styles.modalInput, errors.name && styles.inputError, { color: isDark ? '#fff' : '#333' }]} value={formData.name} onChangeText={(v) => setFormData({ ...formData, name: v })} />
+                  {errors.name && <ThemedText style={styles.errorText}>{errors.name}</ThemedText>}
 
-                  <ThemedText style={styles.labelSmall}>Correo Electrónico *</ThemedText>
-                  <TextInput style={styles.modalInput} value={formData.email} onChangeText={(v) => setFormData({ ...formData, email: v })} keyboardType="email-address" autoCapitalize="none" placeholder="correo@ejemplo.com" />
+                  {/* Email Field */}
+                  <ThemedText style={[styles.labelSmall, errors.email && styles.errorLabel]}>Correo Electrónico *</ThemedText>
+                  <TextInput style={[styles.modalInput, errors.email && styles.inputError, { color: isDark ? '#fff' : '#333' }]} value={formData.email} onChangeText={(v) => setFormData({ ...formData, email: v })} keyboardType="email-address" autoCapitalize="none" />
+                  {errors.email && <ThemedText style={styles.errorText}>{errors.email}</ThemedText>}
 
-                  <ThemedText style={styles.labelSmall}>Teléfono</ThemedText>
-                  <TextInput style={styles.modalInput} value={formData.phone} onChangeText={(v) => setFormData({ ...formData, phone: v })} keyboardType="phone-pad" placeholder="10 dígitos" />
-
-                  <ThemedText style={styles.labelSmall}>Role *</ThemedText>
+                  {/* Role Picker */}
+                  <ThemedText style={[styles.labelSmall, errors.roleId && styles.errorLabel]}>Role *</ThemedText>
                   <View style={styles.rolePickerRow}>
                     {roles.map((r) => (
-                      <TouchableOpacity key={r.id} style={[styles.roleChip, formData.role === r.name && styles.roleChipActive]} onPress={() => setFormData({ ...formData, role: r.name })}>
-                        <ThemedText style={[styles.roleChipText, formData.role === r.name && { color: 'white' }]}>{r.name}</ThemedText>
+                      <TouchableOpacity key={r.id} style={[styles.roleChip, formData.roleId === r.id && styles.roleChipActive, errors.roleId && {borderColor: '#ff4444'}]} onPress={() => setFormData({ ...formData, roleId: r.id })}>
+                        <ThemedText style={[styles.roleChipText, formData.roleId === r.id && { color: 'white' }]}>{r.name}</ThemedText>
                       </TouchableOpacity>
                     ))}
                   </View>
+                  {errors.roleId && <ThemedText style={styles.errorText}>{errors.roleId}</ThemedText>}
 
-                  <ThemedText style={styles.labelSmall}>Comentarios</ThemedText>
-                  <TextInput style={[styles.modalInput, styles.textArea]} value={formData.comments} onChangeText={(v) => setFormData({ ...formData, comments: v })} multiline placeholder="Notas internas..." />
+                  {/* Password Section */}
+                  <View style={[styles.passwordSection, { backgroundColor: isDark ? '#2c2c2e' : '#fdfdfd', borderColor: errors.password || errors.password_confirmation ? '#ff4444' : (isDark ? '#444' : '#eee') }]}>
+                    <ThemedText style={[styles.labelSmall, errors.password && styles.errorLabel]}>{editingUser ? 'Nueva Contraseña' : 'Contraseña *'}</ThemedText>
+                    <TextInput style={[styles.modalInput, errors.password && styles.inputError, { color: isDark ? '#fff' : '#333' }]} value={formData.password} onChangeText={(v) => setFormData({ ...formData, password: v })} secureTextEntry />
+                    {errors.password && <ThemedText style={styles.errorText}>{errors.password}</ThemedText>}
 
-                  <View style={styles.passwordSection}>
-                    <ThemedText style={styles.labelSmall}>{editingUser ? 'Nueva Contraseña (Opcional)' : 'Contraseña *'}</ThemedText>
-                    <TextInput style={styles.modalInput} value={formData.password} onChangeText={(v) => setFormData({ ...formData, password: v })} secureTextEntry placeholder="********" />
-                    <ThemedText style={styles.labelSmall}>Confirmar Contraseña *</ThemedText>
-                    <TextInput style={styles.modalInput} value={formData.password_confirmation} onChangeText={(v) => setFormData({ ...formData, password_confirmation: v })} secureTextEntry placeholder="********" />
+                    <ThemedText style={[styles.labelSmall, errors.password_confirmation && styles.errorLabel]}>Confirmar Contraseña *</ThemedText>
+                    <TextInput style={[styles.modalInput, errors.password_confirmation && styles.inputError, { color: isDark ? '#fff' : '#333' }]} value={formData.password_confirmation} onChangeText={(v) => setFormData({ ...formData, password_confirmation: v })} secureTextEntry />
+                    {errors.password_confirmation && <ThemedText style={styles.errorText}>{errors.password_confirmation}</ThemedText>}
                   </View>
+
+                  {/* Server Error Message */}
+                  {errors.server && <ThemedText style={styles.serverError}>{errors.server}</ThemedText>}
                 </ScrollView>
-                <View style={styles.modalFooter}>
+
+                <View style={[styles.modalFooter, { backgroundColor: isDark ? '#1c1c1e' : '#f9f9f9', borderTopColor: isDark ? '#333' : '#eee' }]}>
                   <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}><ThemedText style={styles.cancelLabel}>Cancelar</ThemedText></TouchableOpacity>
                   <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSaving}>
                     {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={styles.saveBtnText}>Guardar</ThemedText>}
@@ -365,30 +368,40 @@ export default function ResidentsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   headerActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12, color: '#333' },
+  searchInput: { flex: 1, borderRadius: 10, padding: 12 },
   addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, justifyContent: 'center' },
-  userItem: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
-  inactiveItem: { backgroundColor: '#fff5f5' },
+  userItem: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, alignItems: 'center' },
+  inactiveItem: { opacity: 0.6 },
   userName: { fontSize: 16, fontWeight: 'bold' },
-  userSub: { fontSize: 13, color: '#666' },
+  userSub: { fontSize: 13 },
   actionRow: { flexDirection: 'row', gap: 20, marginLeft: 10 },
   badgeRow: { flexDirection: 'row', marginTop: 5 },
   badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: 'white', borderRadius: 20, width: '100%', maxHeight: '90%', overflow: 'hidden' },
-  modalBody: { paddingHorizontal: 25, paddingTop: 25 },
+  
+  // ⚠️ KEYBOARD VIEW FIX
+  keyboardView: { width: '100%', justifyContent: 'center', alignItems: 'center', flex: 1 },
+
+  // ⚠️ MODAL CONTENT FIX: max-height and flex: 1 to prevent shrinking
+  modalContent: { borderRadius: 20, width: '100%', maxHeight: '90%', flexShrink: 1, overflow: 'hidden' },
+  scrollView: { flexShrink: 1 },
+  modalBody: { paddingHorizontal: 25, paddingTop: 25, paddingBottom: 20 },
+
   labelSmall: { fontSize: 11, color: '#888', fontWeight: 'bold', textTransform: 'uppercase' },
-  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 20, fontSize: 15, paddingVertical: 5, color: '#333' },
-  textArea: { minHeight: 60, textAlignVertical: 'top' },
-  passwordSection: { marginTop: 10, backgroundColor: '#fdfdfd', padding: 10, borderRadius: 10, borderStyle: 'dashed', borderWidth: 1, borderColor: '#eee' },
-  rolePickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10, marginBottom: 20 },
+  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 5, fontSize: 15, paddingVertical: 5 },
+  passwordSection: { marginTop: 10, padding: 10, borderRadius: 10, borderStyle: 'dashed', borderWidth: 1 },
+  rolePickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 },
   roleChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, borderWidth: 1, borderColor: '#007AFF' },
   roleChipActive: { backgroundColor: '#007AFF' },
   roleChipText: { fontSize: 12, color: '#007AFF' },
-  modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 20, padding: 25, backgroundColor: '#f9f9f9', borderTopWidth: 1, borderTopColor: '#eee' },
+  modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 20, padding: 25, borderTopWidth: 1 },
   cancelBtn: { padding: 10 },
   cancelLabel: { color: '#666', fontWeight: 'bold' },
   saveBtn: { backgroundColor: '#28a745', minWidth: 100, height: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  saveBtnText: { color: 'white', fontWeight: 'bold' }
+  saveBtnText: { color: 'white', fontWeight: 'bold' },
+  inputError: { borderBottomColor: '#ff4444' },
+  errorLabel: { color: '#ff4444' },
+  errorText: { color: '#ff4444', fontSize: 11, marginBottom: 10, fontWeight: '500' },
+  serverError: { color: '#ff4444', textAlign: 'center', marginTop: 15, fontWeight: 'bold' }
 });

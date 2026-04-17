@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // Added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, 
   FlatList, 
@@ -6,7 +6,6 @@ import {
   View, 
   TextInput, 
   ActivityIndicator, 
-  Alert, 
   Modal,
   KeyboardAvoidingView, 
   Platform, 
@@ -15,9 +14,10 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router';
+import Toast from 'react-native-toast-message';
 
-// Corrected relative path to reach src/api/axios from app/(drawer)/
+// Corrected relative path
 import { API_BASE } from '../../../src/api/axios'; 
 
 import { ThemedText } from '@/components/themed-text';
@@ -33,7 +33,6 @@ interface Permission {
   name: string;
 }
 
-// Construct dynamic endpoint
 const ENDPOINT = `${API_BASE}/permisos`;
 
 export default function PermissionsScreen() {
@@ -52,9 +51,12 @@ export default function PermissionsScreen() {
 
   // Form state
   const [permissionName, setPermissionName] = useState('');
+  
+  // ⚠️ NEW: Inline error state
+  const [fieldError, setFieldError] = useState<string | null>(null);
 
   /**
-   * 🛡️ FOCUS LOAD: Re-fetches permissions every time the screen is focused.
+   * 🛡️ FOCUS LOAD
    */
   useFocusEffect(
     useCallback(() => {
@@ -62,7 +64,6 @@ export default function PermissionsScreen() {
         try {
           const jsonValue = await AsyncStorage.getItem('userData');
           if (jsonValue) setCurrentUser(JSON.parse(jsonValue));
-          // Perform fresh fetch from dynamic endpoint
           await fetchPermissions();
         } catch (e) {
           console.error("Initialization Error:", e);
@@ -71,10 +72,6 @@ export default function PermissionsScreen() {
         }
       };
       initialize();
-
-      return () => {
-        // Optional cleanup
-      };
     }, [])
   );
 
@@ -83,10 +80,6 @@ export default function PermissionsScreen() {
   const canEdit = can('Editar-permisos');
   const canDelete = can('Eliminar-permisos');
 
-  /**
-   * Fetches the permissions list from the dynamic endpoint.
-   * Added cache busting via timestamp.
-   */
   const fetchPermissions = async () => {
     setLoading(true);
     try {
@@ -111,58 +104,56 @@ export default function PermissionsScreen() {
   const openModal = (perm: Permission | null = null) => {
     setEditingPermission(perm);
     setPermissionName(perm ? perm.name : '');
+    setFieldError(null); // Clear errors when opening
     setModalVisible(true);
   };
 
   /**
-   * Logic for Save/Update operations using dynamic endpoint.
+   * handleSave with Inline Validation
    */
   const handleSave = async () => {
+    // ⚠️ Check validation inline
     if (!permissionName.trim()) {
-      Alert.alert("Error", "El nombre del permiso es obligatorio.");
+      setFieldError("El nombre del permiso es obligatorio.");
       return;
     }
 
+    setFieldError(null);
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
       
       if (editingPermission) {
-        // Dynamic PUT
         await axios.put(`${ENDPOINT}/${editingPermission.id}`, { name: permissionName.trim() }, config);
-        Alert.alert("Éxito", "Permiso actualizado correctamente.");
+        Toast.show({ type: 'success', text1: '¡Éxito!', text2: 'Permiso actualizado exitosamente' });
       } else {
-        // Dynamic POST
         await axios.post(ENDPOINT, { name: permissionName.trim() }, config);
-        Alert.alert("Éxito", "Permiso creado correctamente.");
+        Toast.show({ type: 'success', text1: '¡Éxito!', text2: 'Permiso creado exitosamente' });
       }
       
       setModalVisible(false);
       fetchPermissions();
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Fallo al guardar el permiso.";
-      Alert.alert("Error", msg);
+      const msg = error.response?.data?.message || "Error al guardar.";
+      setFieldError(msg); // Show API error inline too
     } finally {
       setIsSaving(false);
     }
   };
 
-  /**
-   * Logical deletion logic using dynamic endpoint.
-   */
   const confirmDelete = async () => {
     if (!permToDelete) return;
     try {
       const token = await AsyncStorage.getItem('userToken');
-      // Dynamic DELETE
       await axios.delete(`${ENDPOINT}/${permToDelete}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      Toast.show({ type: 'success', text1: 'Eliminado' });
       fetchPermissions();
       setDeleteModalVisible(false);
     } catch (e) {
-      Alert.alert("Error", "No se pudo eliminar el permiso.");
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Fallo al eliminar.' });
     }
   };
 
@@ -170,7 +161,6 @@ export default function PermissionsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      {/* HEADER ACTIONS */}
       <View style={styles.headerActions}>
         <TextInput 
           style={styles.searchInput}
@@ -186,7 +176,6 @@ export default function PermissionsScreen() {
         )}
       </View>
 
-      {/* PERMISSIONS LIST */}
       {loading ? (
         <ActivityIndicator size="large" color="#28a745" style={{ marginTop: 50 }} />
       ) : (
@@ -198,7 +187,6 @@ export default function PermissionsScreen() {
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.itemName}>{item.name}</ThemedText>
               </View>
-              
               <View style={styles.actionRow}>
                 {canEdit && (
                   <TouchableOpacity onPress={() => openModal(item)}>
@@ -227,14 +215,25 @@ export default function PermissionsScreen() {
                         {editingPermission ? 'Editar' : 'Nuevo'} Permiso
                     </ThemedText>
 
-                    <ThemedText style={styles.labelSmall}>Nombre del Permiso *</ThemedText>
+                    <ThemedText style={[styles.labelSmall, fieldError ? {color: '#ff4444'} : {}]}>
+                      Nombre del Permiso *
+                    </ThemedText>
+                    
                     <TextInput 
-                      style={styles.modalInput}
+                      style={[styles.modalInput, fieldError ? styles.inputError : {}]}
                       value={permissionName}
-                      onChangeText={setPermissionName}
+                      onChangeText={(val) => {
+                        setPermissionName(val);
+                        if(fieldError) setFieldError(null);
+                      }}
                       placeholder="Ej. Ver-reportes"
                       autoCapitalize="none"
                     />
+
+                    {/* ⚠️ INLINE ERROR MESSAGE */}
+                    {fieldError && (
+                      <ThemedText style={styles.errorText}>{fieldError}</ThemedText>
+                    )}
                 </View>
 
                 <View style={styles.modalFooter}>
@@ -251,13 +250,13 @@ export default function PermissionsScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* DELETE CONFIRMATION */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
               <View style={styles.confirmBox}>
                   <IconSymbol name="trash" size={40} color="#ff4444" />
                   <ThemedText style={styles.confirmTitle}>¿Eliminar Permiso?</ThemedText>
-                  <ThemedText style={styles.confirmDesc}>Esta acción eliminará el permiso del sistema permanentemente.</ThemedText>
+                  <ThemedText style={styles.confirmDesc}>Esta acción no se puede deshacer.</ThemedText>
                   <View style={styles.confirmActions}>
                       <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteModalVisible(false)}>
                           <ThemedText>Cancelar</ThemedText>
@@ -285,7 +284,9 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: 'white', borderRadius: 20, width: '100%', overflow: 'hidden' },
   modalBody: { padding: 25 },
   labelSmall: { fontSize: 11, color: '#888', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 5 },
-  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 20, fontSize: 16, paddingVertical: 8, color: '#333' },
+  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 5, fontSize: 16, paddingVertical: 8, color: '#333' },
+  inputError: { borderBottomColor: '#ff4444' },
+  errorText: { color: '#ff4444', fontSize: 12, marginBottom: 15, fontWeight: '500' },
   modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 20, padding: 20, backgroundColor: '#f9f9f9', borderTopWidth: 1, borderTopColor: '#eee' },
   cancelBtn: { padding: 10 },
   cancelLabel: { color: '#666', fontWeight: 'bold' },

@@ -17,12 +17,13 @@ import { API_BASE } from '../../../src/api/axios';
 /**
  * TabLayout Component
  * Manages the main navigation tabs, global UI listeners, and safe area adjustments.
- * Note: Screen titles are adjusted to use community-focused language for Google Play compliance.
+ * Fix: TabBar background is now dynamic to support Dark Mode.
  */
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark'; // Identify current theme
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets(); // Get system insets for notched devices and tablets
+  const insets = useSafeAreaInsets();
   
   const [unreadCount, setUnreadCount] = useState(0);
   const [userPhoto, setUserPhoto] = useState(null);
@@ -52,26 +53,24 @@ export default function TabLayout() {
       countRef.current = count;
       setUnreadCount(count);
     } catch (e) {
-      // Silent error handling for background sync
+      // Background sync failed silently
     }
   };
 
   useEffect(() => {
-    // Load initial user session and profile data
+    // Load initial user session data
     AsyncStorage.getItem('userData').then(d => {
       if (d) myUserId.current = JSON.parse(d).id;
     });
     AsyncStorage.getItem('userProfilePhoto').then(p => p && setUserPhoto(p));
     
-    // Initial sync of the unread message badge
     hardSyncBadge();
 
-    // Listener to update the profile photo in the TabBar immediately
+    // Listeners for real-time updates
     const photoSub = DeviceEventEmitter.addListener('user-photo-updated', (newPhoto) => {
       setUserPhoto(newPhoto);
     });
 
-    // Listener for new incoming socket messages
     const msgSub = DeviceEventEmitter.addListener('new-message-received', (e) => {
       const msg = e?.message || e;
       const senderId = msg?.sender_id;
@@ -85,15 +84,12 @@ export default function TabLayout() {
       }
     });
 
-    // Listener to track if the chat screen is currently focused
     const activeSub = DeviceEventEmitter.addListener('chat-active', (active) => {
       isChatActive.current = active;
-      
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
         syncTimeoutRef.current = null;
       }
-      
       if (active) {
         countRef.current = 0;
         setUnreadCount(0);
@@ -105,7 +101,6 @@ export default function TabLayout() {
       }
     });
 
-    // Listener for messages marked as read by the user
     const readSub = DeviceEventEmitter.addListener('chat-messages-read', () => {
       if (isChatActive.current) {
         countRef.current = 0;
@@ -117,7 +112,6 @@ export default function TabLayout() {
       }
     });
 
-    // Cleanup listeners on component unmount
     return () => {
       photoSub.remove();
       msgSub.remove();
@@ -133,34 +127,33 @@ export default function TabLayout() {
       headerShown: true,
       headerStyle: { backgroundColor: '#343a40' },
       headerTintColor: '#fff',
-      // Dynamic height and padding based on system insets for tablet/mobile bars
+      // FIX: Changed fixed '#fff' to dynamic color based on theme
       tabBarStyle: { 
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? '#1a1a1a' : '#fff', // Dark gray for dark mode, white for light mode
         height: Platform.OS === 'ios' ? 88 : (65 + insets.bottom), 
         paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
         paddingTop: 8,
+        borderTopWidth: isDark ? 0 : 1, // Cleaner look in dark mode
+        borderTopColor: isDark ? '#333' : '#eee',
       },
       tabBarLabelStyle: {
         fontSize: 12,
         fontWeight: '500',
       },
-      // Header drawer trigger adjusted for tablet protective cases
       headerLeft: () => (
         <Pressable 
           onPress={() => navigation.dispatch(DrawerActions.openDrawer())} 
           style={({ pressed }) => ({ 
-            marginLeft: 35, // Increased margin to clear tablet frame
-            padding: 10,    // Increased touch target area
+            marginLeft: 35, 
+            padding: 10,
             opacity: pressed ? 0.5 : 1,
             justifyContent: 'center',
             alignItems: 'center',
           })}
         >
-          {/* Using 'line.3.horizontal' size 24 as confirmed working on tablet */}
           <IconSymbol name="line.3.horizontal" size={24} color="#fff" />
         </Pressable>
       ),
-      // Set headerRight to null to keep the UI clean as requested
       headerRight: () => null,
     }}>
       <Tabs.Screen 
@@ -184,14 +177,14 @@ export default function TabLayout() {
       <Tabs.Screen 
         name="profile" 
         options={{ 
-          title: 'Mi Perfil', // Use 'Profile' instead of 'Account' to avoid banking terminology
+          title: 'Mi Perfil', 
           tabBarIcon: ({ color }) => userPhoto 
             ? <Image key={userPhoto} source={{ uri: userPhoto }} style={{ width: 28, height: 28, borderRadius: 14 }} /> 
             : <IconSymbol size={28} name="person.fill" color={color} /> 
         }} 
       />
       
-      {/* Hidden Screens mapping - Using non-financial terms to comply with Personal Account policies */}
+      {/* Hidden Screens mapping */}
       <Tabs.Screen name="chat/[id]" options={{ href: null, title: 'Chat' }} />
       <Tabs.Screen name="residents" options={{ href: null, title: 'Habitantes' }} />
       <Tabs.Screen name="roles" options={{ href: null, title: 'Roles' }} />

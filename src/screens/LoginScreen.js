@@ -22,10 +22,11 @@ import axios from 'axios';
 import api, { API_BASE } from '../api/axios'; 
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import Constants from 'expo-constants'; 
+import Toast from 'react-native-toast-message';
 
 /**
  * LoginScreen Component
- * Handles version enforcement, authentication, and "Remember Me" functionality.
+ * Handles version enforcement, authentication, and user permission (RBAC) validation.
  */
 const LoginScreen = () => {
     const router = useRouter();
@@ -34,11 +35,11 @@ const LoginScreen = () => {
     const [secureText, setSecureText] = useState(true); 
     const [loading, setLoading] = useState(false);
     const [isCheckingSession, setIsCheckingSession] = useState(true);
-    const [rememberMe, setRememberMe] = useState(false); // State for the checkbox
+    const [rememberMe, setRememberMe] = useState(false); 
 
     useEffect(() => {
         /**
-         * Enforcement logic for Store versions.
+         * Checks if the current app version meets the minimum server requirements.
          */
         const checkVersionEnforcement = async () => {
             const currentVersion = Constants.expoConfig.version; 
@@ -65,16 +66,15 @@ const LoginScreen = () => {
                     );
                 }
             } catch (error) {
-                console.log("Version check skipped or failed:", error.message);
+                // Silenced to prevent logs during initial boot
             }
         };
 
         /**
-         * Check for saved credentials and existing session.
+         * Verifies if there is an active session or remembered credentials.
          */
         const checkSavedCredentialsAndSession = async () => {
             try {
-                // 1. Check if user wanted to be remembered
                 const savedEmail = await AsyncStorage.getItem('rememberedEmail');
                 const savedPassword = await AsyncStorage.getItem('rememberedPassword');
                 const isRemembered = await AsyncStorage.getItem('rememberMe');
@@ -85,13 +85,12 @@ const LoginScreen = () => {
                     setRememberMe(true);
                 }
 
-                // 2. Check for active session
                 const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
                 if (isLoggedIn === 'true') {
                     router.replace('/(tabs)/home');
                 }
             } catch (e) {
-                console.error("Initialization error:", e);
+                console.log("Initialization error:", e.message);
             } finally {
                 setIsCheckingSession(false);
             }
@@ -101,62 +100,107 @@ const LoginScreen = () => {
         checkSavedCredentialsAndSession();
     }, []);
 
+    /**
+     * Fetches authenticated user profile.
+     * FIX: No longer blocks the login flow if roles are missing.
+     * Provides a fallback role to prevent Menu/Home crashes.
+     */
     const fetchAndStoreUserData = async (token) => {
         try {
             const response = await api.get('/user', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (response.data) await AsyncStorage.setItem('userData', JSON.stringify(response.data));
-            if (response.data.profile_photo_path) {
+            
+            let userData = response.data;
+
+            // FIX: If the user has no roles, we inject a dummy role so the UI components don't break.
+            // This allows the user to enter the app even if permissions are currently broken.
+            if (!userData.roles || userData.roles.length === 0) {
+                console.log("User has no roles - injecting fallback to allow entry.");
+                userData.roles = [{ id: 0, name: 'Invitado' }];
+                
+                // Show toast inside the app once navigation completes
+                setTimeout(() => {
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Acceso Restringido',
+                        text2: 'Tu usuario no tiene un rol asignado.',
+                        position: 'top',
+                    });
+                }, 1000);
+            }
+
+            // Persistence of user data
+            await AsyncStorage.setItem('userData', JSON.stringify(userData));
+            
+            if (userData.profile_photo_path) {
                 const baseUrl = API_BASE.replace('/api', '');
-                const photoUrl = `${baseUrl}/storage/images/${response.data.profile_photo_path}`;
+                const photoUrl = `${baseUrl}/storage/images/${userData.profile_photo_path}`;
                 await AsyncStorage.setItem('userProfilePhoto', photoUrl);
                 DeviceEventEmitter.emit('user-photo-updated', photoUrl);
             }
+            
+            return true; // Always return true to allow routing to Home
+
         } catch (error) {
-            console.log("Pre-fetch user data error:", error.message);
+            console.log("Profile fetch error:", error.message);
+            return true; // Allow entry even on fetch failure so user isn't stuck at Login
         }
     };
 
     /**
-     * Handle Login and save credentials if Remember Me is active.
+     * Executes the login process.
      */
     const handleLogin = async () => {
         if (!email || !password) {
             Alert.alert('Campos vacíos', 'Por favor ingresa tu usuario y contraseña.');
             return;
         }
+
         setLoading(true);
         try {
             const baseUrl = API_BASE.replace('/api', '');
+            
+            // CSRF protection for Sanctum
             await axios.get(`${baseUrl}/sanctum/csrf-cookie`, { withCredentials: true });
+            
             const response = await api.post('/login', { email, password });
             
             if (response.status === 200 || response.status === 204) {
-                // Save/Remove credentials based on "Remember Me"
-                if (rememberMe) {
-                    await AsyncStorage.setItem('rememberedEmail', email);
-                    await AsyncStorage.setItem('rememberedPassword', password);
-                    await AsyncStorage.setItem('rememberMe', 'true');
-                } else {
-                    await AsyncStorage.removeItem('rememberedEmail');
-                    await AsyncStorage.removeItem('rememberedPassword');
-                    await AsyncStorage.setItem('rememberMe', 'false');
-                }
-
                 const token = response.data.token; 
-                await AsyncStorage.setItem('userEmail', email); // Always save current login email for session
-                await AsyncStorage.setItem('isLoggedIn', 'true');
-                
+
                 if (token) {
+                    // Save token first
                     await AsyncStorage.setItem('userToken', token);
+                    await AsyncStorage.setItem('userEmail', email); 
+                    await AsyncStorage.setItem('isLoggedIn', 'true');
+
+                    // Fetch user data - now non-blocking
                     await fetchAndStoreUserData(token);
+
+                    // Handle credentials persistence
+                    if (rememberMe) {
+                        await AsyncStorage.setItem('rememberedEmail', email);
+                        await AsyncStorage.setItem('rememberedPassword', password);
+                        await AsyncStorage.setItem('rememberMe', 'true');
+                    } else {
+                        await AsyncStorage.removeItem('rememberedEmail');
+                        await AsyncStorage.removeItem('rememberedPassword');
+                        await AsyncStorage.setItem('rememberMe', 'false');
+                    }
+
+                    // Route to main app
+                    router.replace('/(tabs)/home'); 
                 }
-                router.replace('/(tabs)/home'); 
             }
         } catch (error) {
-            console.error("Login Error:", error);
-            Alert.alert('Error de acceso', 'Usuario o contraseña incorrectos.');
+            console.log("Login sequence failed:", error.message);
+
+            if (error.response && error.response.status === 401) {
+                Alert.alert('Error de acceso', 'Usuario o contraseña incorrectos.');
+            } else {
+                Alert.alert('Error de conexión', 'No se pudo conectar con el servidor.');
+            }
         } finally {
             setLoading(false);
         }
@@ -186,9 +230,8 @@ const LoginScreen = () => {
                         <View style={styles.overlay}>
                             <View style={styles.formContainer}>
                                 <Text style={styles.brandText}>Prados de la Huerta</Text>
-                                <Text style={styles.welcomeText}>Bienvenido</Text>
+                                <Text style={styles.welcomeText}>Bienvenido...</Text>
                                 
-                                {/* User Input */}
                                 <View style={styles.inputContainer}>
                                     <TextInput 
                                         style={styles.input} 
@@ -200,7 +243,6 @@ const LoginScreen = () => {
                                     />
                                 </View>
 
-                                {/* Password Input */}
                                 <View style={styles.inputContainer}>
                                     <TextInput 
                                         style={[styles.input, { flex: 1 }]} 
@@ -215,7 +257,6 @@ const LoginScreen = () => {
                                     </TouchableOpacity>
                                 </View>
 
-                                {/* Remember Me Checkbox */}
                                 <TouchableOpacity 
                                     style={styles.rememberMeContainer} 
                                     onPress={() => setRememberMe(!rememberMe)}
@@ -255,19 +296,8 @@ const styles = StyleSheet.create({
     welcomeText: { fontSize: 18, fontWeight: '600', marginBottom: 25, color: '#555', letterSpacing: 1, textAlign: 'center' },
     inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: 15, paddingHorizontal: 15, marginBottom: 15, width: '100%', height: 55 },
     input: { fontSize: 16, color: '#000', height: '100%', width: '100%' },
-    rememberMeContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        marginBottom: 20,
-        marginLeft: 5
-    },
-    rememberMeText: {
-        fontSize: 14,
-        color: '#555',
-        marginLeft: 8,
-        fontWeight: '500'
-    },
+    rememberMeContainer: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 20, marginLeft: 5 },
+    rememberMeText: { fontSize: 14, color: '#555', marginLeft: 8, fontWeight: '500' },
     loginButton: { backgroundColor: '#2E7D32', paddingVertical: 15, borderRadius: 25, alignItems: 'center', marginTop: 10, width: '100%' },
     buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });

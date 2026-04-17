@@ -1,13 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
-  TextInput, ActivityIndicator, Alert, Modal,
+  TextInput, ActivityIndicator, Modal,
   KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
   InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
+import Toast from 'react-native-toast-message';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios';
@@ -17,14 +19,12 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import usePermission from '@/hooks/usePermission';
 
-// Construct dynamic endpoints using API_BASE
 const ENDPOINT = `${API_BASE}/expenses`;
 const CAT_ENDPOINT = `${API_BASE}/expense_categories`;
 
 /**
  * ExpensesScreen Component
- * Manages community management records.
- * Terminology adjusted to "Management Records" to avoid financial flags in Personal Accounts.
+ * Manages community management records with a Date Picker for entry.
  */
 export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -37,15 +37,19 @@ export default function ExpensesScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [showCategoryList, setShowCategoryList] = useState(false); 
+  const [showDatePicker, setShowDatePicker] = useState(false);
   
   const [editingId, setEditingId] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState('');
   const [categoryName, setCategoryName] = useState('Seleccionar Tipo');
   const [amount, setAmount] = useState('');
-  const [expenseDate, setExpenseDate] = useState('');
+  const [expenseDate, setExpenseDate] = useState(new Date());
   const [isSaving, setIsSaving] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<any>(null);
   const [deactivationReason, setDeactivationReason] = useState('');
+
+  // ⚠️ Inline validation error state
+  const [errors, setErrors] = useState<any>({});
 
   /**
    * FOCUS LOAD: Refreshes records and categories every time the screen is focused.
@@ -64,18 +68,11 @@ export default function ExpensesScreen() {
         }
       };
       initialize();
-
-      return () => {
-        // Optional cleanup
-      };
     }, [])
   );
 
   const { can } = usePermission(user);
 
-  /**
-   * Fetches records from the server.
-   */
   const fetchExpenses = async () => {
     setLoading(true);
     try {
@@ -86,21 +83,14 @@ export default function ExpensesScreen() {
       });
       const data = response.data.data || response.data;
       setExpenses(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Fetch Error:", e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error("Fetch Error:", e); }
+    finally { setLoading(false); }
   };
 
-  /**
-   * Fetches active categories to populate the picker.
-   */
   const fetchCategories = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const t = new Date().getTime();
-      const response = await axios.get(`${CAT_ENDPOINT}?t=${t}`, {
+      const response = await axios.get(`${CAT_ENDPOINT}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       const data = response.data.data || response.data;
@@ -108,69 +98,70 @@ export default function ExpensesScreen() {
     } catch (e) { console.error("Fetch Categories Error:", e); }
   };
 
-  /**
-   * Opens the form modal.
-   */
   const openForm = (item: any = null) => {
+    setErrors({});
     setEditingId(item?.id || null);
     setCategoryId(item?.expense_category_id?.toString() || '');
     setCategoryName(item?.category?.name || 'Seleccionar Tipo');
     setAmount(item?.amount?.toString() || '');
-    setExpenseDate(item ? item.expense_date.split(' ')[0] : new Date().toISOString().split('T')[0]);
+    // Parsing date from string to object for the Picker
+    setExpenseDate(item ? new Date(item.expense_date.replace(/-/g, '\/')) : new Date());
     setShowCategoryList(false);
     setModalVisible(true);
   };
 
-  const openDelete = (item: any) => {
-    setExpenseToDelete(item);
-    setDeactivationReason('');
-    setDeleteModalVisible(true);
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setExpenseDate(selectedDate);
+    }
   };
 
-  /**
-   * Logic for Save/Update operations.
-   */
+  const validate = () => {
+    let _errors: any = {};
+    if (!categoryId) _errors.category = "Selecciona un tipo de gestión.";
+    if (!amount || isNaN(Number(amount))) _errors.amount = "Ingresa un valor válido.";
+    setErrors(_errors);
+    return Object.keys(_errors).length === 0;
+  };
+
   const handleSave = async () => {
-    if (!categoryId || !amount || !expenseDate) {
-        Alert.alert("Atención", "Por favor completa todos los campos obligatorios.");
-        return;
-    }
+    if (!validate()) return;
+
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const payload = { expense_category_id: categoryId, amount, expense_date: expenseDate };
-      const config = { headers: { Authorization: `Bearer ${token}` } };
+      // Format date to YYYY-MM-DD for backend
+      const formattedDate = expenseDate.toISOString().split('T')[0];
       
-      let successMsg = "";
+      const payload = { 
+        expense_category_id: categoryId, 
+        amount, 
+        expense_date: formattedDate 
+      };
+      const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
+      
       if (editingId) {
         await axios.put(`${ENDPOINT}/${editingId}`, payload, config);
-        successMsg = "Información actualizada correctamente.";
+        Toast.show({ type: 'success', text1: 'Éxito', text2: 'Registro actualizado.' });
       } else {
         await axios.post(ENDPOINT, payload, config);
-        successMsg = "Registro guardado exitosamente.";
+        Toast.show({ type: 'success', text1: 'Éxito', text2: 'Registro guardado.' });
       }
 
       setModalVisible(false);
-
-      InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", successMsg);
-        fetchExpenses();
-      });
-
+      fetchExpenses();
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "Ocurrió un error al guardar.");
+      setErrors({ server: e.response?.data?.message || "Error al guardar." });
     } finally {
       setIsSaving(false);
     }
   };
 
-  /**
-   * Logic for soft deleting a record.
-   */
   const handleDelete = async () => {
     if (deactivationReason.trim().length < 10) {
-        Alert.alert("Atención", "El motivo debe tener al menos 10 caracteres.");
-        return;
+      setErrors({ deleteReason: "Mínimo 10 caracteres." });
+      return;
     }
     setIsSaving(true);
     try {
@@ -179,16 +170,11 @@ export default function ExpensesScreen() {
         headers: { Authorization: `Bearer ${token}` },
         data: { reason: deactivationReason }
       });
-      
       setDeleteModalVisible(false);
-
-      InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", "El registro ha sido removido.");
-        fetchExpenses();
-      });
-
+      Toast.show({ type: 'success', text1: 'Eliminado', text2: 'Registro removido.' });
+      fetchExpenses();
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "No se pudo completar la acción.");
+      Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo remover.' });
     } finally {
       setIsSaving(false);
     }
@@ -222,12 +208,11 @@ export default function ExpensesScreen() {
             <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.itemName}>{item.category?.name || 'N/A'}</ThemedText>
-                <ThemedText style={styles.amountText}>Valor: {parseFloat(item.amount).toFixed(2)}</ThemedText>
+                <ThemedText style={styles.amountText}>Valor: ${parseFloat(item.amount).toFixed(2)}</ThemedText>
                 <ThemedText style={styles.dateSubtext}>{item.expense_date.split(' ')[0]}</ThemedText>
-                {item.deleted_at && <ThemedText style={styles.deletedLabel}>Entrada Removida</ThemedText>}
               </View>
               <View style={styles.actionRow}>
-                {!item.deleted_at ? (
+                {!item.deleted_at && (
                   <>
                     {can('Editar-gastos') && (
                       <TouchableOpacity onPress={() => openForm(item)} style={styles.iconBtn}>
@@ -235,13 +220,11 @@ export default function ExpensesScreen() {
                       </TouchableOpacity>
                     )}
                     {can('Eliminar-gastos') && (
-                      <TouchableOpacity onPress={() => openDelete(item)} style={styles.iconBtn}>
+                      <TouchableOpacity onPress={() => { setExpenseToDelete(item); setDeactivationReason(''); setErrors({}); setDeleteModalVisible(true); }} style={styles.iconBtn}>
                         <IconSymbol name="trash" size={22} color="#ff4444" />
                       </TouchableOpacity>
                     )}
                   </>
-                ) : (
-                  <IconSymbol name="trash" size={22} color="#ccc" />
                 )}
               </View>
             </View>
@@ -250,88 +233,96 @@ export default function ExpensesScreen() {
       )}
 
       {/* MODAL: CREATE / EDIT */}
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ width: '100%', alignItems: 'center' }}
-          >
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-              <View style={styles.modalContent}>
-                {showCategoryList ? (
-                  <View style={{ width: '100%', height: 350 }}>
-                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Seleccionar Tipo</ThemedText>
-                    <FlatList 
-                      data={categories}
-                      keyExtractor={(item) => `cat-${item.id}`}
-                      renderItem={({item}) => (
-                        <TouchableOpacity style={styles.catItem} onPress={() => {
-                          setCategoryId(item.id.toString());
-                          setCategoryName(item.name);
-                          setShowCategoryList(false);
-                        }}>
-                          <ThemedText>{item.name}</ThemedText>
-                        </TouchableOpacity>
-                      )}
-                    />
-                    <TouchableOpacity onPress={() => setShowCategoryList(false)} style={{ marginTop: 15 }}>
-                      <ThemedText style={{ color: '#007AFF', textAlign: 'center', fontWeight: 'bold' }}>CERRAR</ThemedText>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={{ width: '100%' }}>
-                    <ThemedText type="subtitle" style={{ marginBottom: 15 }}>{editingId ? 'Editar' : 'Nuevo'} Registro</ThemedText>
-                    
-                    <ThemedText style={styles.labelSmall}>Tipo de Gestión *</ThemedText>
-                    <TouchableOpacity style={styles.pickerFake} onPress={() => { Keyboard.dismiss(); setShowCategoryList(true); }}>
-                      <ThemedText style={{ color: categoryId ? '#333' : '#aaa' }}>{categoryName}</ThemedText>
-                      <IconSymbol name="chevron.down" size={16} color="#888" />
-                    </TouchableOpacity>
-
-                    <ThemedText style={styles.labelSmall}>Valor Unitario *</ThemedText>
-                    <TextInput style={styles.modalInput} value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="numeric" placeholderTextColor="#aaa" />
-
-                    <ThemedText style={styles.labelSmall}>Fecha (AAAA-MM-DD) *</ThemedText>
-                    <TextInput style={styles.modalInput} value={expenseDate} onChangeText={setExpenseDate} placeholder="AAAA-MM-DD" placeholderTextColor="#aaa" />
-
-                    <View style={styles.modalButtons}>
-                      <TouchableOpacity onPress={() => setModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
-                      <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSaving}>
-                        {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Guardar</ThemedText>}
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%', alignItems: 'center' }}>
+            <View style={styles.modalContent}>
+              {showCategoryList ? (
+                <View style={{ width: '100%', height: 350 }}>
+                  <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Seleccionar Tipo</ThemedText>
+                  <FlatList 
+                    data={categories}
+                    keyExtractor={(item) => `cat-${item.id}`}
+                    renderItem={({item}) => (
+                      <TouchableOpacity style={styles.catItem} onPress={() => {
+                        setCategoryId(item.id.toString());
+                        setCategoryName(item.name);
+                        setShowCategoryList(false);
+                        if(errors.category) setErrors({...errors, category: null});
+                      }}>
+                        <ThemedText>{item.name}</ThemedText>
                       </TouchableOpacity>
-                    </View>
+                    )}
+                  />
+                  <TouchableOpacity onPress={() => setShowCategoryList(false)} style={{ marginTop: 15 }}>
+                    <ThemedText style={{ color: '#007AFF', textAlign: 'center', fontWeight: 'bold' }}>CERRAR</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ width: '100%' }}>
+                  <ThemedText type="subtitle" style={{ marginBottom: 15 }}>{editingId ? 'Editar' : 'Nuevo'} Registro</ThemedText>
+                  
+                  <ThemedText style={[styles.labelSmall, errors.category && styles.errorLabel]}>Tipo de Gestión *</ThemedText>
+                  <TouchableOpacity style={[styles.pickerFake, errors.category && styles.inputError]} onPress={() => { Keyboard.dismiss(); setShowCategoryList(true); }}>
+                    <ThemedText style={{ color: categoryId ? (errors.category ? '#ff4444' : '#333') : '#aaa' }}>{categoryName}</ThemedText>
+                    <IconSymbol name="chevron.down" size={16} color={errors.category ? '#ff4444' : "#888"} />
+                  </TouchableOpacity>
+                  {errors.category && <ThemedText style={styles.errorText}>{errors.category}</ThemedText>}
+
+                  <ThemedText style={[styles.labelSmall, errors.amount && styles.errorLabel]}>Valor Unitario *</ThemedText>
+                  <TextInput style={[styles.modalInput, errors.amount && styles.inputError]} value={amount} onChangeText={(v) => {setAmount(v); if(errors.amount) setErrors({...errors, amount: null});}} placeholder="0.00" keyboardType="numeric" placeholderTextColor="#aaa" />
+                  {errors.amount && <ThemedText style={styles.errorText}>{errors.amount}</ThemedText>}
+
+                  <ThemedText style={styles.labelSmall}>Fecha del Registro *</ThemedText>
+                  <TouchableOpacity style={styles.pickerFake} onPress={() => setShowDatePicker(true)}>
+                    <ThemedText style={{ color: '#333' }}>{expenseDate.toISOString().split('T')[0]}</ThemedText>
+                    <IconSymbol name="calendar" size={18} color="#007AFF" />
+                  </TouchableOpacity>
+
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={expenseDate}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={onDateChange}
+                    />
+                  )}
+
+                  {errors.server && <ThemedText style={styles.serverError}>{errors.server}</ThemedText>}
+
+                  <View style={styles.modalButtons}>
+                    <TouchableOpacity onPress={() => setModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
+                    <TouchableOpacity style={[styles.saveBtn, { opacity: isSaving ? 0.6 : 1 }]} onPress={handleSave} disabled={isSaving}>
+                      {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Guardar</ThemedText>}
+                    </TouchableOpacity>
                   </View>
-                )}
-              </View>
-            </TouchableWithoutFeedback>
+                </View>
+              )}
+            </View>
           </KeyboardAvoidingView>
         </View>
       </Modal>
 
-      {/* MODAL: CONFIRM DEACTIVATION */}
-      <Modal visible={deleteModalVisible} transparent animationType="fade" onRequestClose={() => setDeleteModalVisible(false)}>
+      {/* MODAL: DELETE */}
+      <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <ThemedText style={styles.deleteTitle}>Confirmar Remoción</ThemedText>
-              <ThemedText style={{marginBottom: 10}}>Justifique la remoción de este registro:</ThemedText>
-              
+              <ThemedText style={styles.deleteTitle}>Remover Registro</ThemedText>
+              <ThemedText style={styles.labelSmall}>Justificación de remoción *</ThemedText>
               <TextInput 
-                style={[styles.modalInput, {height: 80, textAlignVertical: 'top', borderBottomColor: '#ff4444'}]} 
+                style={[styles.modalInput, {height: 80, textAlignVertical: 'top'}, errors.deleteReason && styles.inputError]} 
                 value={deactivationReason} 
-                onChangeText={setDeactivationReason} 
-                placeholder="Motivo (mín. 10 caracteres)" 
+                onChangeText={(v) => {setDeactivationReason(v); if(errors.deleteReason) setErrors({...errors, deleteReason: null});}} 
+                placeholder="Indique el motivo..." 
                 placeholderTextColor="#aaa"
                 multiline
               />
+              {errors.deleteReason && <ThemedText style={styles.errorText}>{errors.deleteReason}</ThemedText>}
 
               <View style={styles.modalButtons}>
                 <TouchableOpacity onPress={() => setDeleteModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
-                <TouchableOpacity 
-                    style={[styles.saveBtn, { backgroundColor: '#ff4444' }]} 
-                    onPress={handleDelete}
-                    disabled={isSaving}
-                >
-                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Remover Registro</ThemedText>}
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#ff4444' }]} onPress={handleDelete} disabled={isSaving}>
+                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Remover</ThemedText>}
                 </TouchableOpacity>
               </View>
             </View>
@@ -350,16 +341,20 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 16, fontWeight: 'bold' },
   amountText: { color: '#28a745', fontWeight: 'bold', fontSize: 15 },
   dateSubtext: { fontSize: 12, color: '#888' },
-  deletedLabel: { color: '#ff4444', fontSize: 11, fontWeight: 'bold', marginTop: 2 },
   actionRow: { flexDirection: 'row', gap: 15 },
   iconBtn: { padding: 5 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '100%', elevation: 5 },
+  modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '100%' },
   labelSmall: { fontSize: 11, color: '#888', marginTop: 15, fontWeight: 'bold', textTransform: 'uppercase' },
   modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginVertical: 5, paddingVertical: 8, fontSize: 16, color: '#333' },
   pickerFake: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#28a745' },
   catItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 25, marginTop: 25, alignItems: 'center' },
   saveBtn: { backgroundColor: '#28a745', paddingHorizontal: 20, height: 45, borderRadius: 10, justifyContent: 'center', alignItems: 'center', minWidth: 110 },
-  deleteTitle: { color: '#ff4444', fontSize: 18, fontWeight: 'bold', marginBottom: 15 }
+  deleteTitle: { color: '#ff4444', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+  // Inline error styles
+  inputError: { borderBottomColor: '#ff4444' },
+  errorLabel: { color: '#ff4444' },
+  errorText: { color: '#ff4444', fontSize: 12, marginTop: 4 },
+  serverError: { color: '#ff4444', textAlign: 'center', fontWeight: 'bold', marginTop: 10 }
 });

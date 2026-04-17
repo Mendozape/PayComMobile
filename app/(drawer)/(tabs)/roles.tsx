@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // Removed useEffect, added useCallback
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, 
   FlatList, 
@@ -6,7 +6,6 @@ import {
   View, 
   TextInput, 
   ActivityIndicator, 
-  Alert, 
   Modal,
   KeyboardAvoidingView, 
   Platform, 
@@ -16,7 +15,8 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useFocusEffect } from 'expo-router'; 
+import Toast from 'react-native-toast-message';
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios'; 
@@ -65,6 +65,9 @@ export default function RolesScreen() {
     selectedPermissions: [] as number[]
   });
 
+  // ⚠️ Inline validation error state
+  const [errors, setErrors] = useState<any>({});
+
   /**
    * 🛡️ FOCUS LOAD: Re-fetches roles and permissions every time the screen is focused.
    */
@@ -83,10 +86,6 @@ export default function RolesScreen() {
         }
       };
       initialize();
-
-      return () => {
-        // Optional cleanup
-      };
     }, [])
   );
 
@@ -97,7 +96,6 @@ export default function RolesScreen() {
 
   /**
    * Fetches roles list from dynamic endpoint.
-   * Added cache busting via timestamp.
    */
   const fetchRoles = async () => {
     setLoading(true);
@@ -117,7 +115,6 @@ export default function RolesScreen() {
 
   /**
    * Fetches all available permissions to populate the checklist.
-   * Added cache busting via timestamp.
    */
   const fetchPermissions = async () => {
     try {
@@ -137,6 +134,7 @@ export default function RolesScreen() {
   );
 
   const openModal = (role: Role | null = null) => {
+    setErrors({});
     setEditingRole(role);
     if (role) {
       setFormData({
@@ -156,16 +154,26 @@ export default function RolesScreen() {
         ? prev.selectedPermissions.filter(p => p !== id)
         : [...prev.selectedPermissions, id]
     }));
+    // Clear permission error if at least one is selected
+    if (errors.permissions) setErrors({ ...errors, permissions: null });
+  };
+
+  /**
+   * Validation Logic
+   */
+  const validate = () => {
+    let _errors: any = {};
+    if (!formData.name.trim()) _errors.name = "El nombre del role es obligatorio.";
+    if (formData.selectedPermissions.length === 0) _errors.permissions = "Debes seleccionar al menos un permiso.";
+    setErrors(_errors);
+    return Object.keys(_errors).length === 0;
   };
 
   /**
    * Logic for Save/Update operations via dynamic API base.
    */
   const handleSave = async () => {
-    if (!formData.name.trim() || formData.selectedPermissions.length === 0) {
-      Alert.alert("Error", "Nombre y al menos un permiso son obligatorios.");
-      return;
-    }
+    if (!validate()) return;
 
     setIsSaving(true);
     try {
@@ -178,19 +186,18 @@ export default function RolesScreen() {
       };
 
       if (editingRole) {
-        // Dynamic PUT request
         await axios.put(`${ROLES_ENDPOINT}/${editingRole.id}`, payload, config);
-        Alert.alert("Éxito", "Role actualizado correctamente.");
+        Toast.show({ type: 'success', text1: '¡Éxito!', text2: 'Role actualizado correctamente.' });
       } else {
-        // Dynamic POST request
         await axios.post(ROLES_ENDPOINT, payload, config);
-        Alert.alert("Éxito", "Role creado correctamente.");
+        Toast.show({ type: 'success', text1: '¡Éxito!', text2: 'Role creado correctamente.' });
       }
       
       setModalVisible(false);
       fetchRoles();
     } catch (error: any) {
-      Alert.alert("Error", "Fallo al guardar el rol.");
+      const msg = error.response?.data?.message || "Fallo al guardar el role.";
+      setErrors({ server: msg });
     } finally {
       setIsSaving(false);
     }
@@ -203,14 +210,14 @@ export default function RolesScreen() {
     if (!roleToDelete) return;
     try {
       const token = await AsyncStorage.getItem('userToken');
-      // Dynamic DELETE request
       await axios.delete(`${ROLES_ENDPOINT}/${roleToDelete}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      Toast.show({ type: 'success', text1: 'Eliminado', text2: 'El role ha sido borrado.' });
       fetchRoles();
       setDeleteModalVisible(false);
     } catch (e) {
-      Alert.alert("Error", "No se pudo eliminar el rol.");
+      Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo eliminar el role.' });
     }
   };
 
@@ -218,7 +225,6 @@ export default function RolesScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      {/* HEADER ACTIONS */}
       <View style={styles.headerActions}>
         <TextInput 
           style={styles.searchInput}
@@ -234,7 +240,6 @@ export default function RolesScreen() {
         )}
       </View>
 
-      {/* ROLES LIST */}
       {loading ? (
         <ActivityIndicator size="large" color="#28a745" style={{ marginTop: 50 }} />
       ) : (
@@ -246,7 +251,7 @@ export default function RolesScreen() {
               <View style={{ flex: 1 }}>
                 <ThemedText style={styles.roleName}>{item.name}</ThemedText>
                 <ThemedText style={styles.roleSub}>
-                   {item.permissions?.length || 0} permisos asignados
+                    {item.permissions?.length || 0} permisos asignados
                 </ThemedText>
               </View>
               
@@ -278,20 +283,28 @@ export default function RolesScreen() {
                         {editingRole ? 'Editar' : 'Nuevo'} Role del Sistema
                     </ThemedText>
 
-                    <ThemedText style={styles.labelSmall}>Nombre del Role *</ThemedText>
+                    <ThemedText style={[styles.labelSmall, errors.name && styles.errorLabel]}>Nombre del Role *</ThemedText>
                     <TextInput 
-                      style={styles.modalInput}
+                      style={[styles.modalInput, errors.name && styles.inputError]}
                       value={formData.name}
-                      onChangeText={(v) => setFormData({...formData, name: v})}
+                      onChangeText={(v) => {
+                        setFormData({...formData, name: v});
+                        if (errors.name) setErrors({...errors, name: null});
+                      }}
                       placeholder="Ej. Administrador"
                     />
+                    {errors.name && <ThemedText style={styles.errorText}>{errors.name}</ThemedText>}
 
-                    <ThemedText style={styles.labelSmall}>Permisos del Role</ThemedText>
+                    <ThemedText style={[styles.labelSmall, errors.permissions && styles.errorLabel, {marginTop: 10}]}>Permisos del Role *</ThemedText>
                     <View style={styles.permissionsGrid}>
                         {allPermissions.map((p) => (
                             <TouchableOpacity 
                                 key={p.id} 
-                                style={[styles.permChip, formData.selectedPermissions.includes(p.id) && styles.permChipActive]}
+                                style={[
+                                    styles.permChip, 
+                                    formData.selectedPermissions.includes(p.id) && styles.permChipActive,
+                                    errors.permissions && { borderColor: '#ff4444' }
+                                ]}
                                 onPress={() => togglePermission(p.id)}
                             >
                                 <ThemedText style={[styles.permChipText, formData.selectedPermissions.includes(p.id) && { color: 'white' }]}>
@@ -300,6 +313,9 @@ export default function RolesScreen() {
                             </TouchableOpacity>
                         ))}
                     </View>
+                    {errors.permissions && <ThemedText style={styles.errorText}>{errors.permissions}</ThemedText>}
+                    
+                    {errors.server && <ThemedText style={styles.serverError}>{errors.server}</ThemedText>}
                 </ScrollView>
 
                 <View style={styles.modalFooter}>
@@ -351,8 +367,8 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: 'white', borderRadius: 20, width: '100%', maxHeight: '80%', overflow: 'hidden' },
   modalBody: { paddingHorizontal: 25, paddingTop: 25 },
   labelSmall: { fontSize: 11, color: '#888', fontWeight: 'bold', textTransform: 'uppercase' },
-  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 20, fontSize: 15, paddingVertical: 5, color: '#333' },
-  permissionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 30 },
+  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 5, fontSize: 15, paddingVertical: 5, color: '#333' },
+  permissionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 10 },
   permChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#ccc' },
   permChipActive: { backgroundColor: '#28a745', borderColor: '#28a745' },
   permChipText: { fontSize: 12, color: '#666' },
@@ -365,5 +381,10 @@ const styles = StyleSheet.create({
   confirmTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15 },
   confirmDesc: { color: '#666', textAlign: 'center', marginVertical: 10 },
   confirmActions: { flexDirection: 'row', gap: 20, marginTop: 10 },
-  deleteConfirmBtn: { backgroundColor: '#ff4444', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }
+  deleteConfirmBtn: { backgroundColor: '#ff4444', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+  // ⚠️ ERROR STYLES
+  inputError: { borderBottomColor: '#ff4444' },
+  errorLabel: { color: '#ff4444' },
+  errorText: { color: '#ff4444', fontSize: 11, marginBottom: 15, fontWeight: '500' },
+  serverError: { color: '#ff4444', textAlign: 'center', marginTop: 10, fontWeight: 'bold' }
 });
