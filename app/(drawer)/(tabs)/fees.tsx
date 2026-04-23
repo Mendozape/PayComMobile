@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
-  TextInput, ActivityIndicator, Alert, Modal,
+  TextInput, ActivityIndicator, Modal,
   KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
   InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
+import Toast from 'react-native-toast-message';
 
 // Corrected relative path to reach src/api/axios
 import { API_BASE } from '../../../src/api/axios';
@@ -36,7 +37,6 @@ const ENDPOINT = `${API_BASE}/fees`;
 /**
  * FeesScreen Component
  * Manages the catalog of community contribution types.
- * Terminology adjusted to "Management Concepts" to maintain Personal Account compliance.
  */
 export default function FeesScreen() {
   const [fees, setFees] = useState<Fee[]>([]);
@@ -138,7 +138,7 @@ export default function FeesScreen() {
    */
   const handleDeactivation = async () => {
     if (!deactivationReason.trim()) {
-      Alert.alert("Atención", "Debes especificar un motivo para actualizar el estado.");
+      Toast.show({ type: 'info', text1: 'Atención', text2: 'Debes especificar un motivo.' });
       return;
     }
 
@@ -153,12 +153,12 @@ export default function FeesScreen() {
       setDeleteModalVisible(false);
 
       InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", "Estado actualizado correctamente.");
+        Toast.show({ type: 'success', text1: 'Éxito', text2: 'Estado actualizado correctamente.' });
         fetchFees();
       });
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Failed to update status.";
-      Alert.alert("Error", msg);
+      const msg = error.response?.data?.message || "Error al actualizar estado.";
+      Toast.show({ type: 'error', text1: 'Error', text2: msg });
     } finally {
       setIsSaving(false);
     }
@@ -169,7 +169,7 @@ export default function FeesScreen() {
    */
   const handleSave = async () => {
     if (!feeName.trim() || !amountOccupied || !amountEmpty || !amountLand) {
-      Alert.alert("Atención", "Por favor completa todos los campos obligatorios.");
+      Toast.show({ type: 'info', text1: 'Atención', text2: 'Por favor completa los campos obligatorios.' });
       return;
     }
     setIsSaving(true);
@@ -196,13 +196,13 @@ export default function FeesScreen() {
       setModalVisible(false);
 
       InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", successMsg);
+        Toast.show({ type: 'success', text1: 'Éxito', text2: successMsg });
         fetchFees();
       });
 
     } catch (error: any) {
-      const msg = error.response?.data?.message || "Error while saving record.";
-      Alert.alert("Error", msg);
+      const msg = error.response?.data?.message || "Error al guardar el registro.";
+      Toast.show({ type: 'error', text1: 'Error', text2: msg });
     } finally {
       setIsSaving(false);
     }

@@ -2,8 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
   TextInput, ActivityIndicator, Modal,
-  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
-  InteractionManager
+  KeyboardAvoidingView, Platform, Keyboard
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,9 +10,7 @@ import { useFocusEffect } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-// Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios';
-
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -23,9 +20,19 @@ const ENDPOINT = `${API_BASE}/expenses`;
 const CAT_ENDPOINT = `${API_BASE}/expense_categories`;
 
 /**
- * ExpensesScreen Component
- * Manages community management records with a Date Picker for entry.
+ * Safely parses backend date strings into a valid Date object.
  */
+const parseDate = (dateString: string | null) => {
+  if (!dateString) return new Date();
+  try {
+    const clean = dateString.split(' ')[0];
+    const parsed = new Date(clean);
+    return isNaN(parsed.getTime()) ? new Date() : parsed;
+  } catch (e) {
+    return new Date();
+  }
+};
+
 export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -34,11 +41,13 @@ export default function ExpensesScreen() {
   const [user, setUser] = useState<any>(null);
   const [isReady, setIsReady] = useState(false);
   
+  // UI Visibility States
   const [modalVisible, setModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [showCategoryList, setShowCategoryList] = useState(false); 
   const [showDatePicker, setShowDatePicker] = useState(false);
   
+  // Form States
   const [editingId, setEditingId] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState('');
   const [categoryName, setCategoryName] = useState('Seleccionar Tipo');
@@ -48,12 +57,8 @@ export default function ExpensesScreen() {
   const [expenseToDelete, setExpenseToDelete] = useState<any>(null);
   const [deactivationReason, setDeactivationReason] = useState('');
 
-  // ⚠️ Inline validation error state
   const [errors, setErrors] = useState<any>({});
 
-  /**
-   * FOCUS LOAD: Refreshes records and categories every time the screen is focused.
-   */
   useFocusEffect(
     useCallback(() => {
       const initialize = async () => {
@@ -83,8 +88,11 @@ export default function ExpensesScreen() {
       });
       const data = response.data.data || response.data;
       setExpenses(Array.isArray(data) ? data : []);
-    } catch (e) { console.error("Fetch Error:", e); }
-    finally { setLoading(false); }
+    } catch (e) { 
+      console.error("Fetch Error:", e); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const fetchCategories = async () => {
@@ -95,22 +103,53 @@ export default function ExpensesScreen() {
       });
       const data = response.data.data || response.data;
       setCategories(data.filter((c: any) => !c.deleted_at));
-    } catch (e) { console.error("Fetch Categories Error:", e); }
+    } catch (e) { 
+      console.error("Fetch Categories Error:", e); 
+    }
   };
 
+  /**
+   * Resets all form fields and UI triggers to ensure a clean state
+   * regardless of previous interactions.
+   */
   const openForm = (item: any = null) => {
     setErrors({});
-    setEditingId(item?.id || null);
-    setCategoryId(item?.expense_category_id?.toString() || '');
-    setCategoryName(item?.category?.name || 'Seleccionar Tipo');
-    setAmount(item?.amount?.toString() || '');
-    // Parsing date from string to object for the Picker
-    setExpenseDate(item ? new Date(item.expense_date.replace(/-/g, '\/')) : new Date());
+    setIsSaving(false);
+    
+    // Explicitly reset UI triggers to prevent stuck pickers
+    setShowDatePicker(false);
     setShowCategoryList(false);
+
+    if (item) {
+      // Edit Mode: Populate with DB data
+      setEditingId(item.id);
+      setCategoryId(item.expense_category_id?.toString() || '');
+      setCategoryName(item.category?.name || 'Seleccionar Tipo');
+      setAmount(item.amount?.toString() || '');
+      setExpenseDate(parseDate(item.expense_date));
+    } else {
+      // Create Mode: Hard reset all fields
+      setEditingId(null);
+      setCategoryId('');
+      setCategoryName('Seleccionar Tipo');
+      setAmount('');
+      setExpenseDate(new Date());
+    }
+
     setModalVisible(true);
   };
 
+  /**
+   * Closes the main modal and ensures sub-pickers are also closed.
+   */
+  const closeForm = () => {
+    setModalVisible(false);
+    setShowDatePicker(false);
+    setShowCategoryList(false);
+  };
+
   const onDateChange = (event: any, selectedDate?: Date) => {
+    // Hide picker immediately after selection or cancel
     setShowDatePicker(false);
     if (selectedDate) {
       setExpenseDate(selectedDate);
@@ -131,7 +170,6 @@ export default function ExpensesScreen() {
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      // Format date to YYYY-MM-DD for backend
       const formattedDate = expenseDate.toISOString().split('T')[0];
       
       const payload = { 
@@ -139,6 +177,7 @@ export default function ExpensesScreen() {
         amount, 
         expense_date: formattedDate 
       };
+
       const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
       
       if (editingId) {
@@ -149,7 +188,7 @@ export default function ExpensesScreen() {
         Toast.show({ type: 'success', text1: 'Éxito', text2: 'Registro guardado.' });
       }
 
-      setModalVisible(false);
+      closeForm();
       fetchExpenses();
     } catch (e: any) {
       setErrors({ server: e.response?.data?.message || "Error al guardar." });
@@ -163,6 +202,7 @@ export default function ExpensesScreen() {
       setErrors({ deleteReason: "Mínimo 10 caracteres." });
       return;
     }
+
     setIsSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -170,6 +210,7 @@ export default function ExpensesScreen() {
         headers: { Authorization: `Bearer ${token}` },
         data: { reason: deactivationReason }
       });
+
       setDeleteModalVisible(false);
       Toast.show({ type: 'success', text1: 'Eliminado', text2: 'Registro removido.' });
       fetchExpenses();
@@ -186,10 +227,10 @@ export default function ExpensesScreen() {
     <ThemedView style={styles.container}>
       <View style={styles.headerActions}>
         <TextInput 
-            style={styles.searchInput} 
-            placeholder="Buscar por tipo..." 
-            placeholderTextColor="#888"
-            onChangeText={setSearch} 
+          style={styles.searchInput} 
+          placeholder="Buscar por tipo..." 
+          placeholderTextColor="#888"
+          onChangeText={setSearch} 
         />
         {can('Crear-gastos') && (
           <TouchableOpacity style={styles.addButton} onPress={() => openForm()}>
@@ -211,6 +252,7 @@ export default function ExpensesScreen() {
                 <ThemedText style={styles.amountText}>Valor: ${parseFloat(item.amount).toFixed(2)}</ThemedText>
                 <ThemedText style={styles.dateSubtext}>{item.expense_date.split(' ')[0]}</ThemedText>
               </View>
+
               <View style={styles.actionRow}>
                 {!item.deleted_at && (
                   <>
@@ -220,7 +262,15 @@ export default function ExpensesScreen() {
                       </TouchableOpacity>
                     )}
                     {can('Eliminar-gastos') && (
-                      <TouchableOpacity onPress={() => { setExpenseToDelete(item); setDeactivationReason(''); setErrors({}); setDeleteModalVisible(true); }} style={styles.iconBtn}>
+                      <TouchableOpacity 
+                        onPress={() => { 
+                          setExpenseToDelete(item); 
+                          setDeactivationReason(''); 
+                          setErrors({}); 
+                          setDeleteModalVisible(true); 
+                        }} 
+                        style={styles.iconBtn}
+                      >
                         <IconSymbol name="trash" size={22} color="#ff4444" />
                       </TouchableOpacity>
                     )}
@@ -232,100 +282,139 @@ export default function ExpensesScreen() {
         />
       )}
 
-      {/* MODAL: CREATE / EDIT */}
-      <Modal visible={modalVisible} transparent animationType="slide">
+      {/* CREATE / EDIT MODAL */}
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={closeForm}>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%', alignItems: 'center' }}>
             <View style={styles.modalContent}>
-              {showCategoryList ? (
-                <View style={{ width: '100%', height: 350 }}>
-                  <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Seleccionar Tipo</ThemedText>
-                  <FlatList 
-                    data={categories}
-                    keyExtractor={(item) => `cat-${item.id}`}
-                    renderItem={({item}) => (
-                      <TouchableOpacity style={styles.catItem} onPress={() => {
-                        setCategoryId(item.id.toString());
-                        setCategoryName(item.name);
-                        setShowCategoryList(false);
-                        if(errors.category) setErrors({...errors, category: null});
-                      }}>
-                        <ThemedText>{item.name}</ThemedText>
-                      </TouchableOpacity>
-                    )}
-                  />
-                  <TouchableOpacity onPress={() => setShowCategoryList(false)} style={{ marginTop: 15 }}>
-                    <ThemedText style={{ color: '#007AFF', textAlign: 'center', fontWeight: 'bold' }}>CERRAR</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={{ width: '100%' }}>
-                  <ThemedText type="subtitle" style={{ marginBottom: 15 }}>{editingId ? 'Editar' : 'Nuevo'} Registro</ThemedText>
-                  
-                  <ThemedText style={[styles.labelSmall, errors.category && styles.errorLabel]}>Tipo de Gestión *</ThemedText>
-                  <TouchableOpacity style={[styles.pickerFake, errors.category && styles.inputError]} onPress={() => { Keyboard.dismiss(); setShowCategoryList(true); }}>
-                    <ThemedText style={{ color: categoryId ? (errors.category ? '#ff4444' : '#333') : '#aaa' }}>{categoryName}</ThemedText>
-                    <IconSymbol name="chevron.down" size={16} color={errors.category ? '#ff4444' : "#888"} />
-                  </TouchableOpacity>
-                  {errors.category && <ThemedText style={styles.errorText}>{errors.category}</ThemedText>}
 
-                  <ThemedText style={[styles.labelSmall, errors.amount && styles.errorLabel]}>Valor Unitario *</ThemedText>
-                  <TextInput style={[styles.modalInput, errors.amount && styles.inputError]} value={amount} onChangeText={(v) => {setAmount(v); if(errors.amount) setErrors({...errors, amount: null});}} placeholder="0.00" keyboardType="numeric" placeholderTextColor="#aaa" />
-                  {errors.amount && <ThemedText style={styles.errorText}>{errors.amount}</ThemedText>}
+              <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
+                {editingId ? 'Editar' : 'Nuevo'} Registro
+              </ThemedText>
 
-                  <ThemedText style={styles.labelSmall}>Fecha del Registro *</ThemedText>
-                  <TouchableOpacity style={styles.pickerFake} onPress={() => setShowDatePicker(true)}>
-                    <ThemedText style={{ color: '#333' }}>{expenseDate.toISOString().split('T')[0]}</ThemedText>
-                    <IconSymbol name="calendar" size={18} color="#007AFF" />
-                  </TouchableOpacity>
+              {/* CATEGORY SELECTOR */}
+              <ThemedText style={[styles.labelSmall, errors.category && styles.errorLabel]}>
+                Tipo de Gestión *
+              </ThemedText>
+              <TouchableOpacity 
+                style={[styles.pickerFake, errors.category && styles.inputError]} 
+                onPress={() => { Keyboard.dismiss(); setShowCategoryList(true); }}
+              >
+                <ThemedText style={{ color: categoryId ? '#333' : '#aaa' }}>
+                  {categoryName}
+                </ThemedText>
+                <IconSymbol name="chevron.down" size={16} color="#888" />
+              </TouchableOpacity>
 
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={expenseDate}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={onDateChange}
-                    />
-                  )}
+              {/* AMOUNT */}
+              <ThemedText style={[styles.labelSmall, errors.amount && styles.errorLabel]}>
+                Valor Unitario *
+              </ThemedText>
+              <TextInput
+                style={[styles.modalInput, errors.amount && styles.inputError]}
+                value={amount}
+                onChangeText={setAmount}
+                placeholder="0.00"
+                keyboardType="numeric"
+                placeholderTextColor="#aaa"
+              />
 
-                  {errors.server && <ThemedText style={styles.serverError}>{errors.server}</ThemedText>}
+              {/* DATE PICKER TRIGGER */}
+              <ThemedText style={styles.labelSmall}>Fecha del Registro *</ThemedText>
+              <TouchableOpacity style={styles.pickerFake} onPress={() => setShowDatePicker(true)}>
+                <ThemedText>
+                  {expenseDate.toISOString().split('T')[0]}
+                </ThemedText>
+                <IconSymbol name="calendar" size={18} color="#007AFF" />
+              </TouchableOpacity>
 
-                  <View style={styles.modalButtons}>
-                    <TouchableOpacity onPress={() => setModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
-                    <TouchableOpacity style={[styles.saveBtn, { opacity: isSaving ? 0.6 : 1 }]} onPress={handleSave} disabled={isSaving}>
-                      {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Guardar</ThemedText>}
-                    </TouchableOpacity>
-                  </View>
-                </View>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={expenseDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={onDateChange}
+                />
               )}
+
+              {/* MODAL ACTIONS */}
+              <View style={styles.modalButtons}>
+                <TouchableOpacity onPress={closeForm}>
+                  <ThemedText>Cancelar</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSaving}>
+                  {isSaving ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Guardar</ThemedText>
+                  )}
+                </TouchableOpacity>
+              </View>
+
             </View>
           </KeyboardAvoidingView>
         </View>
+
+        {/* INNER MODAL FOR CATEGORY SELECTION */}
+        <Modal visible={showCategoryList} transparent animationType="fade" onRequestClose={() => setShowCategoryList(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxHeight: '70%' }]}>
+              <ThemedText type="subtitle" style={{ marginBottom: 15 }}>Seleccione Tipo</ThemedText>
+              <FlatList
+                data={categories}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity 
+                    style={styles.categoryItem}
+                    onPress={() => {
+                      setCategoryId(item.id.toString());
+                      setCategoryName(item.name);
+                      setShowCategoryList(false);
+                    }}
+                  >
+                    <ThemedText>{item.name}</ThemedText>
+                  </TouchableOpacity>
+                )}
+              />
+              <TouchableOpacity 
+                style={[styles.saveBtn, { marginTop: 15, backgroundColor: '#666', width: '100%' }]} 
+                onPress={() => setShowCategoryList(false)}
+              >
+                <ThemedText style={{ color: 'white' }}>Cerrar</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </Modal>
 
-      {/* MODAL: DELETE */}
+      {/* DELETE MODAL */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <ThemedText style={styles.deleteTitle}>Remover Registro</ThemedText>
-              <ThemedText style={styles.labelSmall}>Justificación de remoción *</ThemedText>
-              <TextInput 
-                style={[styles.modalInput, {height: 80, textAlignVertical: 'top'}, errors.deleteReason && styles.inputError]} 
-                value={deactivationReason} 
-                onChangeText={(v) => {setDeactivationReason(v); if(errors.deleteReason) setErrors({...errors, deleteReason: null});}} 
-                placeholder="Indique el motivo..." 
-                placeholderTextColor="#aaa"
-                multiline
-              />
-              {errors.deleteReason && <ThemedText style={styles.errorText}>{errors.deleteReason}</ThemedText>}
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.deleteTitle}>Remover Registro</ThemedText>
 
-              <View style={styles.modalButtons}>
-                <TouchableOpacity onPress={() => setDeleteModalVisible(false)}><ThemedText>Cancelar</ThemedText></TouchableOpacity>
-                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#ff4444' }]} onPress={handleDelete} disabled={isSaving}>
-                  {isSaving ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Remover</ThemedText>}
-                </TouchableOpacity>
-              </View>
+            <TextInput 
+              style={[styles.modalInput, {height: 80, textAlignVertical: 'top'}]} 
+              value={deactivationReason} 
+              onChangeText={setDeactivationReason}
+              placeholder="Indique el motivo..." 
+              placeholderTextColor="#aaa"
+              multiline
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity onPress={() => setDeleteModalVisible(false)}>
+                <ThemedText>Cancelar</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.saveBtn, { backgroundColor: '#ff4444' }]} 
+                onPress={handleDelete}
+                disabled={isSaving}
+              >
+                <ThemedText style={{ color: 'white', fontWeight: 'bold' }}>Remover</ThemedText>
+              </TouchableOpacity>
             </View>
+          </View>
         </View>
       </Modal>
     </ThemedView>
@@ -348,13 +437,10 @@ const styles = StyleSheet.create({
   labelSmall: { fontSize: 11, color: '#888', marginTop: 15, fontWeight: 'bold', textTransform: 'uppercase' },
   modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginVertical: 5, paddingVertical: 8, fontSize: 16, color: '#333' },
   pickerFake: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#28a745' },
-  catItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 25, marginTop: 25, alignItems: 'center' },
   saveBtn: { backgroundColor: '#28a745', paddingHorizontal: 20, height: 45, borderRadius: 10, justifyContent: 'center', alignItems: 'center', minWidth: 110 },
   deleteTitle: { color: '#ff4444', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-  // Inline error styles
   inputError: { borderBottomColor: '#ff4444' },
   errorLabel: { color: '#ff4444' },
-  errorText: { color: '#ff4444', fontSize: 12, marginTop: 4 },
-  serverError: { color: '#ff4444', textAlign: 'center', fontWeight: 'bold', marginTop: 10 }
+  categoryItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee' }
 });

@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
-  TextInput, ActivityIndicator, Alert, Modal,
+  TextInput, ActivityIndicator, Modal,
   KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
   InteractionManager
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router'; // or '@react-navigation/native'
+import { useFocusEffect } from 'expo-router'; 
+import Toast from 'react-native-toast-message';
 
 // Corrected relative path to reach src/api/axios from app/(drawer)/
 import { API_BASE } from '../../../src/api/axios';
@@ -84,7 +85,7 @@ export default function StreetsScreen() {
 
   /**
    * Fetches the street catalog from the dynamic API_BASE
-   * Added a timestamp (?t=...) to bypass potential HTTP caching in the emulator/device.
+   * Added a timestamp (?t=...) to bypass potential HTTP caching.
    */
   const fetchStreets = async () => {
     setLoading(true);
@@ -132,7 +133,7 @@ export default function StreetsScreen() {
    */
   const handleDeactivation = async () => {
     if (!deactivationReason.trim()) {
-      Alert.alert("Atención", "Debes especificar un motivo de la baja.");
+      Toast.show({ type: 'info', text1: 'Atención', text2: 'Debes especificar un motivo de la baja.' });
       return;
     }
     setIsSaving(true);
@@ -146,12 +147,12 @@ export default function StreetsScreen() {
       setDeleteModalVisible(false);
 
       InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", "Calle dada de baja correctamente.");
+        Toast.show({ type: 'success', text1: 'Éxito', text2: 'Calle dada de baja correctamente.' });
         fetchStreets();
       });
     } catch (error: any) {
       const msg = error.response?.data?.message || "Error al procesar la baja.";
-      Alert.alert("Error", msg);
+      Toast.show({ type: 'error', text1: 'Error', text2: msg });
     } finally {
       setIsSaving(false);
     }
@@ -162,7 +163,7 @@ export default function StreetsScreen() {
    */
   const handleSave = async () => {
     if (!streetName.trim()) {
-        Alert.alert("Atención", "El nombre de la calle es obligatorio.");
+        Toast.show({ type: 'info', text1: 'Atención', text2: 'El nombre de la calle es obligatorio.' });
         return;
     }
 
@@ -183,12 +184,13 @@ export default function StreetsScreen() {
       setModalVisible(false);
 
       InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", successMsg);
+        Toast.show({ type: 'success', text1: 'Éxito', text2: successMsg });
         fetchStreets();
       });
 
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Error al guardar la calle.");
+      const msg = error.response?.data?.message || "Error al guardar la calle.";
+      Toast.show({ type: 'error', text1: 'Error', text2: msg });
     } finally {
       setIsSaving(false);
     }

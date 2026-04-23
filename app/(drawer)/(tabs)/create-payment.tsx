@@ -1,238 +1,259 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  StyleSheet, View, ScrollView, TouchableOpacity, ActivityIndicator, 
-  Alert, Platform 
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, router } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
 
-// Import dynamic API_BASE from centralized configuration
 import { API_BASE } from '../../../src/api/axios';
-
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 
-/**
- * CreatePaymentScreen Component
- * Handles the logic for registering community contributions or waivers.
- * Adjusted to use non-financial terminology for Google Play compliance.
- */
 export default function CreatePaymentScreen() {
-  const router = useRouter();
   const { addressId } = useLocalSearchParams();
-  
-  const [address, setAddress] = useState<any>(null);
-  const [fees, setFees] = useState<any[]>([]);
-  const [paidMonths, setPaidMonths] = useState<any[]>([]);
+
+  const [address, setAddress] = useState(null);
+  const [fees, setFees] = useState([]);
+  const [feeId, setFeeId] = useState('');
+  const [selectedFeeLabel, setSelectedFeeLabel] = useState('Selecciona...');
+  const [year, setYear] = useState('');
+  const [paidMonths, setPaidMonths] = useState([]);
+  const [selectedMonths, setSelectedMonths] = useState([]);
+  const [waivedMonths, setWaivedMonths] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form State
-  const [feeId, setFeeId] = useState('');
-  const currentYearInt = new Date().getFullYear();
-  const [year, setYear] = useState(currentYearInt.toString());
-  const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
-  const [waivedMonths, setWaivedMonths] = useState<number[]>([]);
-  const [unitAmount, setUnitAmount] = useState(0);
+  const [feeModalVisible, setFeeModalVisible] = useState(false);
+  const [yearModalVisible, setYearModalVisible] = useState(false);
 
-  // Year options for selection: Previous, Current, Next
-  const yearOptions = [
-    (currentYearInt - 1).toString(),
-    currentYearInt.toString(),
-    (currentYearInt + 1).toString()
-  ];
+  const [step, setStep] = useState(1);
+
+  const paymentDate = new Date().toISOString().split('T')[0];
+  const currentYear = new Date().getFullYear();
 
   const months = [
-    { v: 1, l: 'Ene' }, { v: 2, l: 'Feb' }, { v: 3, l: 'Mar' }, { v: 4, l: 'Abr' },
-    { v: 5, l: 'May' }, { v: 6, l: 'Jun' }, { v: 7, l: 'Jul' }, { v: 8, l: 'Ago' },
-    { v: 9, l: 'Sep' }, { v: 10, l: 'Oct' }, { v: 11, l: 'Nov' }, { v: 12, l: 'Dic' }
+    { value: 1, label: 'Ene' }, { value: 2, label: 'Feb' },
+    { value: 3, label: 'Mar' }, { value: 4, label: 'Abr' },
+    { value: 5, label: 'May' }, { value: 6, label: 'Jun' },
+    { value: 7, label: 'Jul' }, { value: 8, label: 'Ago' },
+    { value: 9, label: 'Sep' }, { value: 10, label: 'Oct' },
+    { value: 11, label: 'Nov' }, { value: 12, label: 'Dic' }
   ];
 
-  /**
-   * FOCUS LOAD: Re-fetches initial data whenever the screen is focused.
-   */
   useFocusEffect(
     useCallback(() => {
-      fetchInitialData();
-    }, [addressId])
+      resetAll();
+      fetchData();
+    }, [])
   );
 
-  // Refresh status when year or contribution type changes
-  useEffect(() => {
-    if (feeId && year) fetchPaidMonths();
-  }, [feeId, year]);
+  const resetAll = () => {
+    setFeeId('');
+    setSelectedFeeLabel('Selecciona...');
+    setYear('');
+    setSelectedMonths([]);
+    setWaivedMonths([]);
+    setPaidMonths([]);
+    setStep(1);
+  };
 
-  /**
-   * Loads the property address details and available contribution types from the API.
-   */
-  const fetchInitialData = async () => {
+  const fetchData = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const t = new Date().getTime();
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      
+
       const [resAddr, resFees] = await Promise.all([
-        axios.get(`${API_BASE}/addresses/${addressId}?t=${t}`, config),
-        axios.get(`${API_BASE}/fees?t=${t}`, config)
+        axios.get(`${API_BASE}/addresses/${addressId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_BASE}/fees`, {
+          headers: { Authorization: `Bearer ${token}` }
+        } )
       ]);
+
       setAddress(resAddr.data.data);
-      setFees(resFees.data.data.filter((f: any) => !f.deleted_at));
-    } catch (e) { 
-      Alert.alert("Error", "Could not load information."); 
-    } finally { 
-      setLoading(false); 
+      setFees(resFees.data.data);
+    } catch {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo cargar' });
+    } finally {
+      setLoading(false);
     }
   };
 
-  /**
-   * Fetches the list of months already updated for the selected year and type.
-   */
-  const fetchPaidMonths = async () => {
+  useEffect(() => {
+    const fetchPaid = async () => {
+      if (!year || !feeId) return;
+
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+
+        const res = await axios.get(
+          `${API_BASE}/address_payments/paid-months/${addressId}/${year}?fee_id=${feeId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        setPaidMonths(res.data.months || []);
+      } catch {
+        setPaidMonths([]);
+      }
+    };
+
+    fetchPaid();
+  }, [year, feeId]);
+
+  const isMonthPaid = (m) =>
+    paidMonths.some(x => Number(x.month) === m);
+
+  const getStatus = (m) =>
+    paidMonths.find(x => Number(x.month) === m);
+
+  const handleAction = (month, type) => {
+    if (isMonthPaid(month)) return;
+
+    setSelectedMonths(prev =>
+      prev.includes(month) ? prev : [...prev, month]
+    );
+
+    setWaivedMonths(prev => {
+      if (type === 'C') {
+        return prev.includes(month) ? prev : [...prev, month];
+      }
+      return prev.filter(m => m !== month);
+    });
+  };
+
+  const handleSave = async () => {
+    if (!feeId || !year || selectedMonths.length === 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Completa todos los campos'
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const t = new Date().getTime();
-      const res = await axios.get(`${API_BASE}/address_payments/paid-months/${addressId}/${year}?fee_id=${feeId}&t=${t}`, {
+
+      await axios.post(`${API_BASE}/address_payments`, {
+        address_id: Number(addressId),
+        fee_id: Number(feeId),
+        year: Number(year),
+        payment_date: paymentDate,
+        months: selectedMonths,
+        waived_months: waivedMonths
+      }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPaidMonths(res.data.months || []);
-      setSelectedMonths([]);
-      setWaivedMonths([]);
-    } catch (e) { 
-      console.error("Error fetching data:", e); 
+
+      Toast.show({
+        type: 'success',
+        text1: 'Éxito',
+        text2: 'Pagos registrados correctamente'
+      });
+
+      resetAll();
+
+      setTimeout(() => {
+        router.back();
+      }, 600);
+
+    } catch (e) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: e.response?.data?.message || 'No se pudo guardar'
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  /**
-   * Calculates the amount based on property type and status.
-   */
-  const handleFeeSelect = (fee: any) => {
-    setFeeId(fee.id.toString());
-    let amount = 0;
-    if (address.type === 'TERRENO') amount = fee.amount_land;
-    else amount = address.status === 'Habitada' ? fee.amount_occupied : fee.amount_empty;
-    setUnitAmount(amount);
-  };
-
-  /**
-   * Toggles month selection for either Update (U) or Exception (E).
-   */
-  const toggleMonth = (month: number, type: 'P' | 'C') => {
-    if (type === 'P') {
-      if (selectedMonths.includes(month) && !waivedMonths.includes(month)) {
-        setSelectedMonths(prev => prev.filter(m => m !== month));
-      } else {
-        setSelectedMonths(prev => [...prev.filter(m => m !== month), month]);
-        setWaivedMonths(prev => prev.filter(m => m !== month));
-      }
-    } else {
-      if (waivedMonths.includes(month)) {
-        setWaivedMonths(prev => prev.filter(m => m !== month));
-        setSelectedMonths(prev => prev.filter(m => m !== month));
-      } else {
-        setWaivedMonths(prev => [...prev.filter(m => m !== month), month]);
-        setSelectedMonths(prev => [...prev.filter(m => m !== month), month]);
-      }
-    }
-  };
-
-  /**
-   * Sends the notification data to the server.
-   */
-  const handleSave = async () => {
-    if (selectedMonths.length === 0) return Alert.alert("Aviso", "Seleccione al menos un mes.");
-    setIsSaving(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      await axios.post(`${API_BASE}/address_payments`, {
-        address_id: addressId,
-        fee_id: feeId,
-        year: year,
-        payment_date: new Date().toISOString().split('T')[0],
-        months: selectedMonths.filter(m => !waivedMonths.includes(m)),
-        waived_months: waivedMonths
-      }, { headers: { Authorization: `Bearer ${token}` } });
-      
-      Alert.alert("Éxito", "Información actualizada correctamente.");
-      router.back();
-    } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.message || "Ocurrió un error al registrar.");
-    } finally { 
-      setIsSaving(false); 
-    }
-  };
-
-  if (loading) return <ActivityIndicator size="large" style={{flex:1}} color="#28a745" />;
+  if (loading) {
+    return <ActivityIndicator style={{ flex: 1 }} size="large" color="#28a745" />;
+  }
 
   return (
-    <ThemedView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Terminology change: 'Pago' to 'Registro' */}
-        <ThemedText type="subtitle">Registro: {address?.street?.name} #{address?.street_number}</ThemedText>
-        
-        <ThemedText style={styles.label}>1. Seleccione Concepto</ThemedText>
-        <View style={styles.feeList}>
-          {fees.map(f => (
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <ThemedText style={styles.headerText}>
+          Registrar Pago: {address?.street?.name} #{address?.street_number}
+        </ThemedText>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.selectorsRow}>
+          {/* STEP 1: CUOTA */}
+          <View style={styles.selectorContainer}>
+            <ThemedText style={styles.label}>Cuota</ThemedText>
             <TouchableOpacity 
-              key={f.id} 
-              style={[styles.feeBtn, feeId === f.id.toString() && styles.activeBtn]} 
-              onPress={() => handleFeeSelect(f)}
+              style={styles.customSelector} 
+              onPress={() => setFeeModalVisible(true)}
             >
-              <ThemedText style={feeId === f.id.toString() && {color:'white'}}>{f.name}</ThemedText>
+              <ThemedText numberOfLines={1} style={styles.selectorValue}>
+                {selectedFeeLabel}
+              </ThemedText>
             </TouchableOpacity>
-          ))}
+          </View>
+
+          {/* STEP 2: YEAR */}
+          <View style={[styles.selectorContainer, { flex: 0.4 }]}>
+            <ThemedText style={styles.label}>Año</ThemedText>
+            <TouchableOpacity 
+              style={[styles.customSelector, step < 2 && { opacity: 0.5 }]} 
+              onPress={() => step >= 2 && setYearModalVisible(true)}
+            >
+              <ThemedText style={styles.selectorValue}>{year || '----'}</ThemedText>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {feeId ? (
-          <View style={styles.card}>
-            <ThemedText style={styles.amountText}>Valor: ${unitAmount}</ThemedText>
-            
-            <ThemedText style={styles.label}>2. Seleccione Año</ThemedText>
-            <View style={styles.yearSelector}>
-              {yearOptions.map(y => (
-                <TouchableOpacity 
-                  key={y} 
-                  style={[styles.yearBtn, year === y && styles.activeYearBtn]}
-                  onPress={() => setYear(y)}
-                >
-                  <ThemedText style={year === y && {color: 'white', fontWeight: 'bold'}}>{y}</ThemedText>
-                </TouchableOpacity>
-              ))}
+        {/* STEP 3: MONTHS */}
+        {step >= 3 && feeId && year && (
+          <>
+            <View style={styles.legend}>
+              <ThemedText style={styles.legendText}>P = Pagado</ThemedText>
+              <ThemedText style={styles.legendText}>C = Condonado</ThemedText>
             </View>
 
-            {/* Adjusted Legend for Month Actions */}
-            <View style={styles.legendContainer}>
-              <View style={styles.legendItem}>
-                <View style={[styles.miniBtn, styles.payActive, {width: 18, height: 18}]}><ThemedText style={styles.legendText}>A</ThemedText></View>
-                <ThemedText style={styles.legendLabel}> = Al corriente</ThemedText>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.miniBtn, styles.waiveActive, {width: 18, height: 18}]}><ThemedText style={styles.legendText}>E</ThemedText></View>
-                <ThemedText style={styles.legendLabel}> = Exento</ThemedText>
-              </View>
-            </View>
-            
-            <View style={styles.monthsGrid}>
+            <View style={styles.monthGrid}>
               {months.map(m => {
-                const paid = paidMonths.find(p => p.month === m.v);
-                const isSel = selectedMonths.includes(m.v);
-                const isWaive = waivedMonths.includes(m.v);
+                const paid = isMonthPaid(m.value);
+                const status = getStatus(m.value);
+                const isPay = selectedMonths.includes(m.value) && !waivedMonths.includes(m.value);
+                const isCond = waivedMonths.includes(m.value);
+
                 return (
-                  <View key={m.v} style={styles.monthBox}>
-                    <ThemedText style={styles.monthLabel}>{m.l}</ThemedText>
+                  <View key={m.value} style={styles.monthBox}>
+                    <ThemedText style={styles.monthLabel}>{m.label}</ThemedText>
+
                     {paid ? (
-                      <View style={[styles.statusBadge, {backgroundColor: paid.status === 'Condonado' ? '#17a2b8' : '#28a745'}]}>
-                        <ThemedText style={styles.badgeText}>{paid.status[0]}</ThemedText>
-                      </View>
+                      <ThemedText style={styles.paid}>
+                        {status?.status === 'Condonado' ? 'C' : 'P'}
+                      </ThemedText>
                     ) : (
-                      <View style={styles.actionRow}>
-                        {/* P -> A (Actualizar) and C -> E (Exento) */}
-                        <TouchableOpacity onPress={() => toggleMonth(m.v, 'P')} style={[styles.miniBtn, isSel && !isWaive && styles.payActive]}>
-                          <ThemedText style={[styles.miniText, isSel && !isWaive && {color:'white'}]}>A</ThemedText>
+                      <View style={styles.radioRow}>
+                        <TouchableOpacity
+                          style={styles.radioItem}
+                          onPress={() => handleAction(m.value, 'P')}
+                        >
+                          <View style={[styles.radioCircle, isPay && styles.radioSelected]} />
+                          <ThemedText style={styles.radioText}>P</ThemedText>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => toggleMonth(m.v, 'C')} style={[styles.miniBtn, isWaive && styles.waiveActive]}>
-                          <ThemedText style={[styles.miniText, isWaive && {color:'white'}]}>E</ThemedText>
+
+                        <TouchableOpacity
+                          style={styles.radioItem}
+                          onPress={() => handleAction(m.value, 'C')}
+                        >
+                          <View style={[styles.radioCircle, isCond && styles.radioSelectedCond]} />
+                          <ThemedText style={styles.radioText}>C</ThemedText>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -241,51 +262,92 @@ export default function CreatePaymentScreen() {
               })}
             </View>
 
-            <TouchableOpacity 
-              style={[styles.saveBtn, isSaving && {backgroundColor: '#ccc'}]} 
-              onPress={handleSave} 
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <ThemedText style={styles.saveBtnText}>
-                  Actualizar Datos
-                </ThemedText>
-              )}
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+              <ThemedText style={styles.saveText}>
+                {isSaving ? 'Guardando...' : 'Guardar'}
+              </ThemedText>
             </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* FEE MODAL */}
+      <Modal visible={feeModalVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setFeeModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.modalTitle}>Seleccionar Cuota</ThemedText>
+            <ScrollView>
+              {fees.map((f) => (
+                <TouchableOpacity key={f.id} style={styles.modalItem} onPress={() => {
+                  setFeeId(f.id);
+                  setSelectedFeeLabel(f.name);
+                  setYear('');
+                  setStep(2);
+                  setFeeModalVisible(false);
+                }}>
+                  <ThemedText>{f.name}</ThemedText>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-        ) : null}
-      </ScrollView>
-    </ThemedView>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* YEAR MODAL */}
+      <Modal visible={yearModalVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setYearModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.modalTitle}>Seleccionar Año</ThemedText>
+            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+              <TouchableOpacity key={y} style={styles.modalItem} onPress={() => {
+                setYear(y.toString());
+                setStep(3);
+                setYearModalVisible(false);
+              }}>
+                <ThemedText style={{ textAlign: 'center', fontSize: 18 }}>{y}</ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#f8f9fa' },
-  label: { fontWeight: 'bold', marginTop: 20, marginBottom: 10 },
-  feeList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  feeBtn: { padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#ddd', backgroundColor: 'white' },
-  activeBtn: { backgroundColor: '#28a745', borderColor: '#28a745' },
-  card: { backgroundColor: 'white', padding: 15, borderRadius: 12, marginTop: 20, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
-  amountText: { fontSize: 18, fontWeight: 'bold', color: '#28a745', textAlign: 'center', marginBottom: 15 },
-  yearSelector: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginBottom: 15 },
-  yearBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', backgroundColor: '#fdfdfd' },
-  activeYearBtn: { backgroundColor: '#007bff', borderColor: '#007bff' },
-  legendContainer: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginBottom: 15, paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#eee' },
-  legendItem: { flexDirection: 'row', alignItems: 'center' },
-  legendText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  legendLabel: { fontSize: 12, color: '#666' },
-  monthsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  monthBox: { width: '23%', alignItems: 'center', marginBottom: 15, padding: 5, borderWidth: 1, borderColor: '#eee', borderRadius: 8 },
-  monthLabel: { fontSize: 12, fontWeight: 'bold' },
-  actionRow: { flexDirection: 'row', gap: 4, marginTop: 5 },
-  miniBtn: { width: 25, height: 25, borderRadius: 5, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center' },
-  payActive: { backgroundColor: '#28a745' },
-  waiveActive: { backgroundColor: '#17a2b8' },
-  miniText: { fontSize: 10, fontWeight: 'bold' },
-  statusBadge: { width: '100%', marginTop: 5, borderRadius: 4, alignItems: 'center' },
-  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  saveBtn: { backgroundColor: '#28a745', padding: 15, borderRadius: 10, marginTop: 20, alignItems: 'center' },
-  saveBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
+  container: { flex: 1, backgroundColor: '#f4f6f9' },
+  header: { backgroundColor: '#28a745', padding: 20 },
+  headerText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  card: { margin: 15, padding: 15, backgroundColor: 'white', borderRadius: 12, elevation: 3 },
+  selectorsRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  selectorContainer: { flex: 1 },
+  label: { fontSize: 11, fontWeight: 'bold', color: '#007AFF', marginBottom: 4, textTransform: 'uppercase' },
+  customSelector: { 
+    backgroundColor: '#f8f9fa', 
+    padding: 10, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    borderColor: '#dee2e6',
+    minHeight: 45,
+    justifyContent: 'center'
+  },
+  selectorValue: { fontSize: 14, color: '#333', fontWeight: '600' },
+  legend: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 15, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  legendText: { fontWeight: 'bold', fontSize: 13, color: '#444' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 15 },
+  monthBox: { width: '23%', padding: 8, borderWidth: 1, borderColor: '#eee', borderRadius: 10, alignItems: 'center', marginBottom: 12, backgroundColor: '#fff' },
+  monthLabel: { fontWeight: 'bold', fontSize: 13, color: '#333', marginBottom: 4 },
+  paid: { color: '#28a745', fontWeight: 'bold', marginTop: 5, fontSize: 16 },
+  radioRow: { flexDirection: 'row', gap: 8, marginTop: 5 },
+  radioItem: { alignItems: 'center' },
+  radioCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#ccc', marginBottom: 2 },
+  radioText: { fontSize: 10, fontWeight: 'bold', color: '#666' },
+  radioSelected: { backgroundColor: '#28a745', borderColor: '#28a745' },
+  radioSelectedCond: { backgroundColor: '#17a2b8', borderColor: '#17a2b8' },
+  saveBtn: { marginTop: 20, backgroundColor: '#28a745', padding: 15, borderRadius: 10, alignItems: 'center', elevation: 2 },
+  saveText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '80%', backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '60%' },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  modalItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' }
 });

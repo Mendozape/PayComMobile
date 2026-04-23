@@ -1,15 +1,16 @@
 import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, View, 
-  TextInput, ActivityIndicator, Alert, Modal,
+  TextInput, ActivityIndicator, Modal,
   KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
-  InteractionManager
+  ScrollView, useColorScheme
 } from 'react-native';
+
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
+import Toast from 'react-native-toast-message';
 
-// Corrected relative path to reach src/api/axios
 import { API_BASE } from '../../../src/api/axios';
 
 import { ThemedText } from '@/components/themed-text';
@@ -18,7 +19,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import usePermission from '@/hooks/usePermission';
 
 /**
- * 🛡️ TYPE DEFINITIONS
+ * Category type definition
  */
 interface ExpenseCategory {
   id: number;
@@ -26,310 +27,454 @@ interface ExpenseCategory {
   deleted_at: string | null;
 }
 
-// Construct the endpoint using the dynamic API_BASE
 const ENDPOINT = `${API_BASE}/expense_categories`;
 
-/**
- * ExpenseCategoriesScreen Component
- * Manages types of community management categories.
- * Terminology adjusted to "Management Categories" to avoid financial flags.
- */
 export default function ExpenseCategoriesScreen() {
+
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [search, setSearch] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
   const [user, setUser] = useState<any>(null);
   const [isReady, setIsReady] = useState(false);
-  
-  // --- MODAL STATES ---
-  const [modalVisible, setModalVisible] = useState<boolean>(false);
-  const [deleteModalVisible, setDeleteModalVisible] = useState<boolean>(false);
-  
+
+  // Modal states
+  const [modalVisible, setModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+
+  // Current selected items
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<ExpenseCategory | null>(null);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // --- FORM STATES ---
-  const [name, setName] = useState<string>('');
+  // Form state
+  const [name, setName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Validation errors
+  const [errors, setErrors] = useState<any>({});
 
   /**
-   * FOCUS LOAD: Refreshes categories every time the screen is focused.
+   * Load categories on screen focus
    */
   useFocusEffect(
     useCallback(() => {
-      const initialize = async () => {
+      const init = async () => {
         try {
           const jsonValue = await AsyncStorage.getItem('userData');
           if (jsonValue) setUser(JSON.parse(jsonValue));
+
           await fetchCategories();
         } catch (e) {
-          console.error("Initialization Error:", e);
+          console.error(e);
         } finally {
           setIsReady(true);
         }
       };
-      initialize();
-
-      return () => {
-        // Optional cleanup
-      };
+      init();
     }, [])
   );
 
   const { can } = usePermission(user);
-  // Adjusted permission keys logic (keep original keys for backend compatibility)
+
   const canCreate = can('Crear-catalogo-gastos');
   const canEdit = can('Editar-catalogo-gastos');
   const canDelete = can('Eliminar-catalogo-gastos');
 
   /**
-   * Fetches categories from the server.
+   * Fetch categories from API
    */
   const fetchCategories = async () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const t = new Date().getTime();
-      const response = await axios.get(`${ENDPOINT}?t=${t}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+
+      const res = await axios.get(ENDPOINT, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      const data = response.data.data || response.data;
-      setCategories(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Fetch Error:", error);
+
+      setCategories(res.data.data || res.data);
+
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredCategories = categories.filter((c) => 
+  const filtered = categories.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  // --- HANDLERS ---
-
-  const openEditModal = (category: ExpenseCategory | null = null) => {
-    setEditingCategory(category);
-    setName(category ? category.name : '');
+  /**
+   * Open create/edit modal
+   */
+  const openModal = (cat: ExpenseCategory | null = null) => {
+    setErrors({});
+    setEditingCategory(cat);
+    setName(cat ? cat.name : '');
     setModalVisible(true);
   };
 
-  const openDeleteModal = (category: ExpenseCategory) => {
-    setCategoryToDelete(category);
-    setDeleteModalVisible(true);
+  /**
+   * Validate form
+   */
+  const validate = () => {
+    let e: any = {};
+
+    if (!name.trim()) {
+      e.name = "El nombre es obligatorio.";
+    }
+
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   /**
-   * Logic for deactivating a category.
+   * Create or update category
    */
-  const handleDeactivation = async () => {
+  const handleSave = async () => {
+    if (!validate()) return;
+
     setIsSaving(true);
+
     try {
       const token = await AsyncStorage.getItem('userToken');
+      const payload = { name: name.trim() };
+
+      if (editingCategory) {
+        await axios.put(`${ENDPOINT}/${editingCategory.id}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        Toast.show({
+          type: 'success',
+          text1: 'Éxito',
+          text2: 'Categoría actualizada'
+        });
+
+      } else {
+        await axios.post(ENDPOINT, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        Toast.show({
+          type: 'success',
+          text1: 'Éxito',
+          text2: 'Categoría creada'
+        });
+      }
+
+      setModalVisible(false);
+      fetchCategories();
+
+    } catch (e: any) {
+      setErrors({ server: "Error al guardar" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /**
+   * Delete (soft delete)
+   */
+  const handleDelete = async () => {
+
+    // Safety check
+    if (categoryToDelete?.deleted_at) {
+      Toast.show({
+        type: 'info',
+        text1: 'Ya está desactivada'
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+
       await axios.delete(`${ENDPOINT}/${categoryToDelete?.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       setDeleteModalVisible(false);
 
-      InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", "Categoría actualizada correctamente.");
-        fetchCategories();
+      Toast.show({
+        type: 'success',
+        text1: 'Éxito',
+        text2: 'Categoría desactivada'
       });
-    } catch (error: any) {
-      const msg = error.response?.data?.message || "Failed to update category.";
-      Alert.alert("Error", msg);
+
+      fetchCategories();
+
+    } catch {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'No se pudo eliminar'
+      });
     } finally {
       setIsSaving(false);
     }
   };
 
-  /**
-   * Handles both Create and Update operations.
-   */
-  const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert("Atención", "El nombre es obligatorio.");
-      return;
-    }
-    setIsSaving(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      const config = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
-      const payload = { name: name.trim() };
-
-      let successMsg = "";
-      if (editingCategory) {
-        await axios.put(`${ENDPOINT}/${editingCategory.id}`, payload, config);
-        successMsg = "Categoría actualizada correctamente.";
-      } else {
-        await axios.post(ENDPOINT, payload, config);
-        successMsg = "Categoría registrada exitosamente.";
-      }
-
-      setModalVisible(false);
-
-      InteractionManager.runAfterInteractions(() => {
-        Alert.alert("Éxito", successMsg);
-        fetchCategories();
-      });
-
-    } catch (error: any) {
-      const msg = error.response?.data?.message || "Error while saving.";
-      Alert.alert("Error", msg);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  if (!isReady) return <ActivityIndicator size="large" color="#28a745" style={{ flex: 1 }} />;
+  if (!isReady) return <ActivityIndicator style={{ flex: 1 }} />;
 
   return (
     <ThemedView style={styles.container}>
-      <View style={styles.headerActions}>
-        <TextInput 
-          style={styles.searchInput}
-          placeholder="Buscar tipo..."
+
+      {/* HEADER */}
+      <View style={styles.header}>
+        <TextInput
+          style={[
+            styles.search,
+            { backgroundColor: isDark ? '#2c2c2e' : '#f2f2f2', color: isDark ? '#fff' : '#333' }
+          ]}
+          placeholder="Buscar..."
           placeholderTextColor="#888"
           value={search}
           onChangeText={setSearch}
         />
+
         {canCreate && (
-          <TouchableOpacity style={styles.addButton} onPress={() => openEditModal()}>
-            <IconSymbol name="plus" size={24} color="white" />
+          <TouchableOpacity style={styles.addBtn} onPress={() => openModal()}>
+            <IconSymbol name="plus" size={22} color="white" />
           </TouchableOpacity>
         )}
       </View>
 
+      {/* LIST */}
       {loading ? (
-        <ActivityIndicator size="large" color="#28a745" style={{ marginTop: 50 }} />
+        <ActivityIndicator size="large" />
       ) : (
         <FlatList
-          data={filteredCategories}
-          keyExtractor={(item) => item.id.toString()}
+          data={filtered}
+          keyExtractor={(i) => i.id.toString()}
           renderItem={({ item }) => (
-            <View style={[styles.itemRow, item.deleted_at && { opacity: 0.5 }]}>
+            <View style={[styles.item, item.deleted_at && { opacity: 0.5 }]}>
+
               <View style={{ flex: 1 }}>
-                <ThemedText style={styles.itemName}>{item.name}</ThemedText>
-                <View style={[styles.badge, { backgroundColor: item.deleted_at ? '#ff4444' : '#28a745' }]}>
-                  <ThemedText style={styles.badgeText}>{item.deleted_at ? 'Inactiva' : 'Activa'}</ThemedText>
-                </View>
+                <ThemedText style={styles.name}>{item.name}</ThemedText>
+
+                {/* Status indicator */}
+                {item.deleted_at && (
+                  <ThemedText style={styles.inactiveText}>
+                    Inactiva
+                  </ThemedText>
+                )}
               </View>
-              
-              <View style={styles.actionRow}>
+
+              <View style={styles.actions}>
+                
                 {canEdit && (
-                  <TouchableOpacity onPress={() => openEditModal(item)} disabled={!!item.deleted_at}>
-                    <IconSymbol name="pencil" size={22} color={item.deleted_at ? "#ccc" : "#007AFF"} />
+                  <TouchableOpacity
+                    disabled={!!item.deleted_at}
+                    onPress={() => openModal(item)}
+                  >
+                    <IconSymbol
+                      name="pencil"
+                      size={20}
+                      color={item.deleted_at ? '#ccc' : '#007AFF'}
+                    />
                   </TouchableOpacity>
                 )}
 
                 {canDelete && (
-                  <TouchableOpacity onPress={() => openDeleteModal(item)} disabled={!!item.deleted_at}>
-                    <IconSymbol name="trash" size={22} color={item.deleted_at ? "#ccc" : "#ff4444"} />
+                  <TouchableOpacity
+                    disabled={!!item.deleted_at}
+                    onPress={() => {
+                      if (item.deleted_at) return;
+                      setCategoryToDelete(item);
+                      setDeleteModalVisible(true);
+                    }}
+                  >
+                    <IconSymbol
+                      name="trash"
+                      size={20}
+                      color={item.deleted_at ? '#ccc' : '#ff4444'}
+                    />
                   </TouchableOpacity>
                 )}
+
               </View>
+
             </View>
           )}
         />
       )}
 
-      {/* --- MODAL: CREATE / EDIT --- */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
+      {/* CREATE / EDIT MODAL */}
+      <Modal visible={modalVisible} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView 
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ width: '100%', alignItems: 'center' }}
-            >
-              <View style={styles.modalContent}>
-                <ThemedText type="subtitle" style={{ marginBottom: 15 }}>
-                   {editingCategory ? 'Editar' : 'Nueva'} Categoría de Gestión
-                </ThemedText>
+            <KeyboardAvoidingView behavior="padding" style={styles.centerBox}>
+              
+              <View style={[styles.card, { backgroundColor: isDark ? '#1c1c1e' : '#fff' }]}>
 
-                <TextInput 
-                  style={styles.modalInput}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Nombre del tipo"
-                  placeholderTextColor="#aaa"
-                />
+                <ScrollView>
+                  <ThemedText style={styles.title}>
+                    {editingCategory ? 'Editar' : 'Nueva'} Categoría
+                  </ThemedText>
 
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity onPress={() => setModalVisible(false)} disabled={isSaving}>
-                    <ThemedText style={styles.cancelLabel}>Cancelar</ThemedText>
+                  <TextInput
+                    style={[styles.input, errors.name && styles.inputError]}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Nombre"
+                  />
+
+                  {errors.name && (
+                    <ThemedText style={styles.error}>{errors.name}</ThemedText>
+                  )}
+
+                  {errors.server && (
+                    <ThemedText style={styles.error}>{errors.server}</ThemedText>
+                  )}
+                </ScrollView>
+
+                <View style={styles.footer}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+                    <ThemedText>Cancelar</ThemedText>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.saveBtn, isSaving && { opacity: 0.7 }]} 
-                    onPress={handleSave}
-                    disabled={isSaving}
-                  >
+
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
                     {isSaving ? (
-                      <ActivityIndicator color="white" size="small" />
+                      <ActivityIndicator color="white" />
                     ) : (
-                      <ThemedText style={styles.saveBtnText}>Guardar</ThemedText>
+                      <ThemedText style={{ color: 'white' }}>Guardar</ThemedText>
                     )}
                   </TouchableOpacity>
                 </View>
+
               </View>
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MODAL: CONFIRM DEACTIVATION --- */}
-      <Modal visible={deleteModalVisible} animationType="fade" transparent>
+      {/* DELETE MODAL */}
+      <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.deleteHeader}>
-              <ThemedText style={styles.deleteTitle}>Confirmar Cambio</ThemedText>
-            </View>
+          <View style={styles.centerBox}>
             
-            <ThemedText style={styles.deleteText}>
-              ¿Está seguro de desactivar la categoría "{categoryToDelete?.name}"?
-            </ThemedText>
+            <View style={[styles.card, { backgroundColor: isDark ? '#1c1c1e' : '#fff' }]}>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setDeleteModalVisible(false)} disabled={isSaving}>
-                <ThemedText style={styles.cancelLabel}>Cancelar</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.saveBtn, { backgroundColor: '#ff4444' }, isSaving && { opacity: 0.7 }]} 
-                onPress={handleDeactivation}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <ActivityIndicator color="white" size="small" />
-                ) : (
-                  <ThemedText style={styles.saveBtnText}>Confirmar</ThemedText>
-                )}
-              </TouchableOpacity>
+              <ThemedText style={styles.deleteTitle}>
+                Confirmar
+              </ThemedText>
+
+              <ThemedText style={styles.deleteText}>
+                ¿Deseas desactivar "{categoryToDelete?.name}"?
+              </ThemedText>
+
+              <View style={styles.footer}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => setDeleteModalVisible(false)}
+                >
+                  <ThemedText>Cancelar</ThemedText>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={handleDelete}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <ThemedText style={{ color: 'white' }}>Eliminar</ThemedText>
+                  )}
+                </TouchableOpacity>
+              </View>
+
             </View>
+
           </View>
         </View>
       </Modal>
+
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
-  headerActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 12, color: '#333' },
-  addButton: { backgroundColor: '#28a745', padding: 12, borderRadius: 10, justifyContent: 'center' },
-  itemRow: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
-  itemName: { fontSize: 16, fontWeight: 'bold' },
-  actionRow: { flexDirection: 'row', gap: 20 },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 6, borderRadius: 4, marginTop: 4 },
-  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '100%' },
-  modalInput: { borderBottomWidth: 1, borderBottomColor: '#28a745', marginBottom: 15, fontSize: 16, paddingVertical: 8, color: '#333' },
-  modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 25, marginTop: 30 },
-  cancelLabel: { color: '#666', fontWeight: '500' },
-  saveBtn: { backgroundColor: '#28a745', minWidth: 120, height: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  saveBtnText: { color: 'white', fontWeight: 'bold' },
-  deleteHeader: { borderBottomWidth: 1, borderBottomColor: '#eee', marginBottom: 15, paddingBottom: 10 },
-  deleteTitle: { color: '#ff4444', fontSize: 18, fontWeight: 'bold' },
-  deleteText: { fontSize: 16, color: '#444' }
+
+  header: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  search: { flex: 1, padding: 10, borderRadius: 10 },
+  addBtn: { backgroundColor: '#28a745', padding: 10, borderRadius: 10 },
+
+  item: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1 },
+  name: { fontWeight: 'bold' },
+  actions: { flexDirection: 'row', gap: 15 },
+
+  inactiveText: { color: '#ff4444', fontSize: 12 },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+
+  centerBox: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 20,
+    padding: 20
+  },
+
+  title: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+
+  input: { borderBottomWidth: 1, paddingVertical: 10 },
+  inputError: { borderBottomColor: '#ff4444' },
+  error: { color: '#ff4444', marginTop: 5 },
+
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 15,
+    marginTop: 20
+  },
+
+  cancelBtn: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#e5e5e5'
+  },
+
+  saveBtn: {
+    backgroundColor: '#28a745',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10
+  },
+
+  deleteBtn: {
+    backgroundColor: '#ff4444',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10
+  },
+
+  deleteTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10
+  },
+
+  deleteText: {
+    marginBottom: 20,
+    fontSize: 14
+  }
 });

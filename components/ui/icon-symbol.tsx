@@ -11,7 +11,7 @@ const MAPPING = {
   'house.fill': 'home',
   'line.3.horizontal': 'menu',
   'chevron.right': 'chevron-right',
-  'chevron.left': 'chevron-left', // <-- ADDED FOR BACK BUTTONS
+  'chevron.left': 'chevron-left',
   'chevron.down': 'keyboard-arrow-down',
   'chevron.up': 'keyboard-arrow-up', 
   'chevron.left.forwardslash.chevron.right': 'code',
@@ -55,7 +55,11 @@ const MAPPING = {
   'pin.fill': 'place',
   'map.fill': 'map',
   'road.fill': 'history', 
-  'clock.arrow.2.circlepath': 'history', 
+  'clock.arrow.2.circlepath': 'history',
+
+  // --- Calendar & Info ---
+  'calendar': 'calendar-today',
+  'info.circle': 'info-outline', 
 
   // --- Communication ---
   'paperplane.fill': 'send',
@@ -86,7 +90,16 @@ export function IconSymbol({
   // Warn developer if the requested icon is missing from the mapping
   if (!mappedName) {
     console.warn(`⚠️ Icon name "${name}" is not defined in the MAPPING object.`);
-    return null;
+
+    // ✅ Optional fallback so UI never breaks
+    return (
+      <MaterialIcons
+        name="help-outline"
+        size={size}
+        color={color}
+        style={style}
+      />
+    );
   }
 
   return (
