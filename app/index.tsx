@@ -3,77 +3,73 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import LoginScreen from '../src/screens/LoginScreen'; 
-
-// Import the dynamic API_BASE from your centralized configuration
-import { API_BASE } from '../src/api/axios'; 
+import LoginScreen from '../src/screens/LoginScreen';
+import ForceUpdateScreen from '../src/components/ForceUpdateScreen';
+import { checkAppVersion } from '../services/versionEnforcement';
+import { API_BASE } from '../src/api/axios';
 
 /**
- * RootIndex Component
- * Acts as the entry point gatekeeper to determine authentication state.
+ * RootIndex — version gate runs for ALL users (logged in or not).
  */
 export default function RootIndex() {
   const router = useRouter();
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [bootState, setBootState] = useState('loading');
+  const [versionBlock, setVersionBlock] = useState(null);
 
   useEffect(() => {
-    const checkSession = async () => {
+    const boot = async () => {
+      const versionResult = await checkAppVersion();
+
+      if (!versionResult.allowed) {
+        setVersionBlock({
+          currentVersion: versionResult.currentVersion,
+          minVersion: versionResult.minVersion,
+          storeUrl: versionResult.storeUrl,
+        });
+        setBootState('blocked');
+        return;
+      }
+
       try {
         const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
         const token = await AsyncStorage.getItem('userToken');
-        
+
         if (isLoggedIn === 'true' && token) {
-          /**
-           * 🛡️ SESSION RECOVERY: We fetch user data to ensure valid credentials
-           * and persist the profile photo before the UI renders.
-           */
-          await fetchUserPhoto(token); 
-          
-          // Navigation happens only after critical data is fetched or timed out
+          await fetchUserPhoto(token);
           router.replace('/(drawer)/(tabs)/home');
+          return;
         }
       } catch (e) {
-        console.error("Session check error:", e);
-      } finally {
-        setIsCheckingSession(false);
+        console.error('Session check error:', e);
       }
+
+      setBootState('login');
     };
-    
-    checkSession();
+
+    boot();
   }, []);
 
-  /**
-   * Function to download and persist user photo using dynamic API_BASE
-   */
   const fetchUserPhoto = async (token: string) => {
     try {
-      // Use dynamic ENDPOINT instead of hardcoded local IP
       const response = await axios.get(`${API_BASE}/user`, {
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
-          Accept: 'application/json' 
+          Accept: 'application/json',
         },
-        timeout: 5000 // Prevents the app from getting stuck on splash screen
+        timeout: 5000,
       });
 
       if (response.data.profile_photo_path) {
-        // Construct URL based on the environment (Dev or Production)
         const baseUrl = API_BASE.replace('/api', '');
         const photoUrl = `${baseUrl}/storage/images/${response.data.profile_photo_path}`;
-        
-        // Persist to storage BEFORE navigation happens
         await AsyncStorage.setItem('userProfilePhoto', photoUrl);
       }
     } catch (apiError) {
-      /**
-       * Silent fail: if network is down or API is slow, 
-       * proceed to Home to allow offline interaction if possible.
-       */
-      console.log("Profile data sync failed, proceeding to dashboard.");
+      console.log('Profile data sync failed, proceeding to dashboard.');
     }
   };
 
-  if (isCheckingSession) {
+  if (bootState === 'loading') {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" color="#28a745" />
@@ -81,14 +77,24 @@ export default function RootIndex() {
     );
   }
 
+  if (bootState === 'blocked' && versionBlock) {
+    return (
+      <ForceUpdateScreen
+        currentVersion={versionBlock.currentVersion}
+        minVersion={versionBlock.minVersion}
+        storeUrl={versionBlock.storeUrl}
+      />
+    );
+  }
+
   return <LoginScreen />;
 }
 
 const styles = StyleSheet.create({
-  loaderContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff' 
-  }
+    backgroundColor: '#fff',
+  },
 });

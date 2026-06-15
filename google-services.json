@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "923572531443",
+    "project_id": "prados-de-la-huerta",
+    "storage_bucket": "prados-de-la-huerta.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:923572531443:android:5d4a5a98c2bc2a5663c786",
+        "android_client_info": {
+          "package_name": "com.mendozadev.pradoslahuerta"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEGAqCpcxqpZOIRPm4FqlDPQ6UGXDUYBU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

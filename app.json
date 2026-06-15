@@ -2,26 +2,37 @@
   "expo": {
     "name": "Prados de la Huerta",
     "slug": "ComPayMobile",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/pradoshuertaicon.png",
     "scheme": "compaymobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "updates": {
-      "url": "https://u.expo.dev/33e20a6d-8a7b-4fdc-808c-bfba564b1c18"
+      "url": "https://u.expo.dev/33e20a6d-8a7b-4fdc-808c-bfba564b1c18",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mendozadev.pradoslahuerta",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "package": "com.mendozadev.pradoslahuerta",
-      "versionCode": 2,
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "output": "static",
@@ -41,7 +52,16 @@
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/pradoshuertafavicon.png",
+          "color": "#2E7D32",
+          "defaultChannel": "chat-messages",
+          "sounds": []
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

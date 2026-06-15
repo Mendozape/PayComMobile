@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DeviceEventEmitter, StyleSheet, View, TextInput, FlatList, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator, useColorScheme } from 'react-native';
+import { DeviceEventEmitter, StyleSheet, View, TextInput, FlatList, KeyboardAvoidingView, Keyboard, Platform, TouchableOpacity, ActivityIndicator, useColorScheme } from 'react-native';
 import { useLocalSearchParams, Stack, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { API_BASE } from '../../../../src/api/axios'; 
 
@@ -10,6 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getEcho, initEcho, getPrefixedChannel } from '@/services/echo';
+import { clearChatNotificationBadge } from '@/services/pushNotifications';
 
 /**
  * ChatDetailScreen
@@ -20,12 +22,14 @@ import { getEcho, initEcho, getPrefixedChannel } from '@/services/echo';
 export default function ChatDetailScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
   const { id, name } = useLocalSearchParams();
   
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const currentUserRef = useRef<any>(null);
   const lastTypingSent = useRef(0);
@@ -35,11 +39,12 @@ export default function ChatDetailScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      DeviceEventEmitter.emit('chat-active', true);
+      const chatUserId = Number(id);
+      DeviceEventEmitter.emit('chat-active', { active: true, id: chatUserId });
       fetchMessages();
       
       return () => {
-        DeviceEventEmitter.emit('chat-active', false);
+        DeviceEventEmitter.emit('chat-active', { active: false, id: chatUserId });
       };
     }, [id])
   );
@@ -111,6 +116,23 @@ export default function ChatDetailScreen() {
     };
   }, [id]);
 
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const handleTextChange = (text: string) => {
     setMessage(text);
     const now = Date.now();
@@ -133,6 +155,9 @@ export default function ChatDetailScreen() {
       });
       setMessages(res.data.messages.reverse());
       setLoading(false);
+
+      await clearChatNotificationBadge();
+      DeviceEventEmitter.emit('chat-messages-read', { sender_id: Number(id) });
     } catch (e) {
       setLoading(false);
     }
@@ -161,18 +186,19 @@ export default function ChatDetailScreen() {
     );
   }
 
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
-    >
+  const keyboardOffset = insets.top + 90;
+
+  const chatContent = (
       <ThemedView style={[styles.container, { backgroundColor: isDark ? '#000' : '#f4f6f9' }]}>
         <Stack.Screen options={{ title: String(name) }} />
 
         <FlatList
           inverted
           data={messages}
+          style={styles.messageList}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
           keyExtractor={m => m.id.toString()}
           renderItem={({ item: m }) => {
             const isMe = Number(m.sender_id) === Number(currentUserRef.current?.id);
@@ -212,7 +238,17 @@ export default function ChatDetailScreen() {
           </ThemedText>
         )}
 
-        <View style={[styles.inputArea, { backgroundColor: isDark ? '#121212' : '#fff', borderTopColor: isDark ? '#333' : '#dee2e6' }]}>
+        <View
+          style={[
+            styles.inputArea,
+            {
+              backgroundColor: isDark ? '#121212' : '#fff',
+              borderTopColor: isDark ? '#333' : '#dee2e6',
+              paddingBottom: keyboardHeight > 0 ? 10 : Math.max(insets.bottom, 10),
+              marginBottom: Platform.OS === 'android' ? keyboardHeight : 0,
+            },
+          ]}
+        >
           <TextInput
             style={[styles.input, { backgroundColor: isDark ? '#262626' : '#f8f9fa', color: isDark ? '#fff' : '#333' }]}
             placeholder="Escribe un mensaje..."
@@ -226,12 +262,26 @@ export default function ChatDetailScreen() {
           </TouchableOpacity>
         </View>
       </ThemedView>
-    </KeyboardAvoidingView>
   );
+
+  if (Platform.OS === 'ios') {
+    return (
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior="padding"
+        keyboardVerticalOffset={keyboardOffset}
+      >
+        {chatContent}
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return <View style={{ flex: 1 }}>{chatContent}</View>;
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  messageList: { flex: 1 },
   msgWrap: { width: '100%', paddingHorizontal: 12, marginVertical: 2 },
   bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, maxWidth: '85%' },
   status: { flexDirection: 'row', alignSelf: 'flex-end', alignItems: 'center', marginTop: 4 },

@@ -37,9 +37,9 @@ export default function TabLayout() {
   /**
    * Syncs unread messages from the server.
    */
-  const hardSyncBadge = async () => {
+  const hardSyncBadge = async (force = false) => {
     const timeSinceSocket = Date.now() - lastSocketTime.current;
-    if (timeSinceSocket < 3000 || isChatActive.current) return;
+    if (!force && (timeSinceSocket < 3000 || isChatActive.current)) return;
     
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -84,32 +84,27 @@ export default function TabLayout() {
       }
     });
 
-    const activeSub = DeviceEventEmitter.addListener('chat-active', (active) => {
-      isChatActive.current = active;
+    const activeSub = DeviceEventEmitter.addListener('chat-active', (payload) => {
+      const isActive =
+        typeof payload === 'boolean' ? payload : Boolean(payload?.active);
+      isChatActive.current = isActive;
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
         syncTimeoutRef.current = null;
       }
-      if (active) {
+      if (isActive) {
         countRef.current = 0;
         setUnreadCount(0);
       } else {
         lastSocketTime.current = 0;
-        syncTimeoutRef.current = setTimeout(() => {
-          hardSyncBadge();
-        }, 3000);
+        hardSyncBadge(true);
       }
     });
 
     const readSub = DeviceEventEmitter.addListener('chat-messages-read', () => {
-      if (isChatActive.current) {
-        countRef.current = 0;
-        setUnreadCount(0);
-      } else {
-        setTimeout(() => {
-          hardSyncBadge();
-        }, 2000);
-      }
+      countRef.current = 0;
+      setUnreadCount(0);
+      hardSyncBadge(true);
     });
 
     return () => {

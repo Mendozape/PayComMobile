@@ -7,10 +7,12 @@ import { useRouter, usePathname } from 'expo-router'; // Added usePathname
 import { Drawer } from 'expo-router/drawer';
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Image, TouchableOpacity, useColorScheme } from 'react-native';
-import { disconnectEcho } from '@/services/echo'; 
+import { disconnectEcho } from '@/services/echo';
+import { unregisterPushTokenFromServer } from '@/services/pushNotifications'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 
 /**
  * CustomDrawerContent
@@ -36,6 +38,7 @@ function CustomDrawerContent(props: any) {
 
   const handleLogout = async () => {
     disconnectEcho();
+    await unregisterPushTokenFromServer();
     await AsyncStorage.multiRemove(['isLoggedIn', 'userToken', 'userProfilePhoto', 'userData']);
     router.replace('/');
   };
@@ -236,7 +239,13 @@ function CustomDrawerContent(props: any) {
 
         <View style={styles.versionContainer}>
           <ThemedText style={styles.versionText}>
-            v{Constants.expoConfig?.version} ({Constants.expoConfig?.android?.versionCode || 'debug'})
+            v{Constants.expoConfig?.version} (
+            {__DEV__
+              ? 'dev'
+              : Application.nativeBuildVersion ||
+                String(Constants.expoConfig?.android?.versionCode ?? '') ||
+                '—'}
+            )
           </ThemedText>
         </View>
       </DrawerContentScrollView>

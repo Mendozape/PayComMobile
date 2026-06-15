@@ -3,12 +3,23 @@ import { Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect, useRef } from 'react';
-import { DeviceEventEmitter, LogBox, View, Dimensions, StyleSheet } from 'react-native';
+import { AppState, DeviceEventEmitter, LogBox, View, Dimensions, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
+import { router } from 'expo-router';
 import { initEcho } from '@/services/echo';
 import Config from '@/constants/Config';
 import Toast from 'react-native-toast-message'; 
 import { ThemedText } from '@/components/themed-text';
+import {
+  handleNewMessagePush,
+  registerPushNotifications,
+  setActiveChatForPush,
+  setPushAppState,
+  syncPushTokenWithServer,
+} from '@/services/pushNotifications';
+import { checkAppVersion } from '@/services/versionEnforcement';
+import * as Updates from 'expo-updates';
 
 // Get screen dimensions for centering
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -61,6 +72,73 @@ export default function RootLayout() {
 
   useEffect(() => {
     isMounted.current = true;
+
+    const setupPush = async () => {
+      const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
+      if (isLoggedIn !== 'true') return;
+      await registerPushNotifications();
+      await syncPushTokenWithServer();
+    };
+
+    setupPush();
+
+    const checkOtaUpdate = async () => {
+      if (__DEV__ || !Updates.isEnabled) return;
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch (error) {
+        console.log('[OTA] Update check failed:', error);
+      }
+    };
+
+    checkOtaUpdate();
+
+    const appStateSub = AppState.addEventListener('change', async (nextState) => {
+      setPushAppState(nextState);
+      if (nextState === 'active') {
+        checkOtaUpdate();
+        syncPushTokenWithServer();
+        const versionResult = await checkAppVersion();
+        if (!versionResult.allowed) {
+          router.replace('/');
+        }
+      }
+    });
+    setPushAppState(AppState.currentState);
+
+    const chatActiveSub = DeviceEventEmitter.addListener('chat-active', (data) => {
+      setActiveChatForPush(data?.active && data?.id ? Number(data.id) : null);
+    });
+
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      if (data?.type === 'chat' && data?.sender_id) {
+        router.push({
+          pathname: '/(drawer)/(tabs)/chat/[id]',
+          params: {
+            id: String(data.sender_id),
+            name: String(data.sender_name || 'Chat'),
+          },
+        });
+      }
+    });
+
+    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data;
+      if (data?.type === 'chat') {
+        DeviceEventEmitter.emit('new-message-received', {
+          message: {
+            sender_id: Number(data.sender_id),
+            content: notification.request.content.body,
+          },
+        });
+      }
+    });
+
     const setupGlobalEcho = async () => {
       try {
         const userData = await AsyncStorage.getItem('userData');
@@ -74,6 +152,7 @@ export default function RootLayout() {
             .stopListening('.MessageSent') 
             .listen('.MessageSent', (e: any) => {
               DeviceEventEmitter.emit('new-message-received', e);
+              handleNewMessagePush(e);
             });
         }
       } catch (error) {
@@ -83,13 +162,19 @@ export default function RootLayout() {
     };
 
     setupGlobalEcho();
-    const loginSub = DeviceEventEmitter.addListener('user-logged-in', () => {
+    const loginSub = DeviceEventEmitter.addListener('user-logged-in', async () => {
+      await registerPushNotifications();
+      await syncPushTokenWithServer();
       setupGlobalEcho();
     });
 
     return () => {
       isMounted.current = false;
       loginSub.remove();
+      appStateSub.remove();
+      chatActiveSub.remove();
+      responseSub.remove();
+      receivedSub.remove();
     };
   }, []);
 

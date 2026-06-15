@@ -13,8 +13,7 @@ import {
     TouchableWithoutFeedback, 
     Keyboard, 
     ScrollView,
-    DeviceEventEmitter,
-    Linking
+    DeviceEventEmitter
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons'; 
@@ -23,10 +22,13 @@ import api, { API_BASE } from '../api/axios';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import Constants from 'expo-constants'; 
 import Toast from 'react-native-toast-message';
+import { registerPushNotifications, syncPushTokenWithServer } from '../../services/pushNotifications';
+import { checkAppVersion } from '../../services/versionEnforcement';
+import ForceUpdateScreen from '../components/ForceUpdateScreen';
 
 /**
  * LoginScreen Component
- * Handles version enforcement, authentication, and user permission (RBAC) validation.
+ * Handles version enforcement, authentication, and user session validation.
  */
 const LoginScreen = () => {
     const router = useRouter();
@@ -35,75 +37,64 @@ const LoginScreen = () => {
     const [secureText, setSecureText] = useState(true); 
     const [loading, setLoading] = useState(false);
     const [isCheckingSession, setIsCheckingSession] = useState(true);
-    const [rememberMe, setRememberMe] = useState(false); 
+    const [rememberMe, setRememberMe] = useState(false);
+    const [versionBlock, setVersionBlock] = useState(null);
 
     useEffect(() => {
         /**
-         * Checks if the current app version meets the minimum server requirements.
+         * Orchestrates the initial boot sequence: Version Check -> Session Check.
          */
-        const checkVersionEnforcement = async () => {
-            const currentVersion = Constants.expoConfig.version; 
-            try {
-                const response = await api.get('/app-settings'); 
-                const minRequiredVersion = response.data.min_version; 
+        const initializeApp = async () => {
+            setIsCheckingSession(true);
 
-                if (currentVersion < minRequiredVersion) {
-                    Alert.alert(
-                        'Actualización obligatoria',
-                        'Tu versión actual (' + currentVersion + ') ya no es compatible. Por favor, descarga la versión ' + minRequiredVersion + ' de la tienda.',
-                        [
-                            { 
-                                text: 'Ir a la tienda', 
-                                onPress: () => {
-                                    const url = Platform.OS === 'ios' 
-                                        ? 'https://apps.apple.com/app/idYOUR_ID' 
-                                        : 'https://play.google.com/store/apps/details?id=com.erasto.compaymobile'; 
-                                    Linking.openURL(url);
-                                } 
-                            }
-                        ],
-                        { cancelable: false }
-                    );
-                }
-            } catch (error) {
-                // Silenced to prevent logs during initial boot
-            }
-        };
-
-        /**
-         * Verifies if there is an active session or remembered credentials.
-         */
-        const checkSavedCredentialsAndSession = async () => {
-            try {
-                const savedEmail = await AsyncStorage.getItem('rememberedEmail');
-                const savedPassword = await AsyncStorage.getItem('rememberedPassword');
-                const isRemembered = await AsyncStorage.getItem('rememberMe');
-
-                if (isRemembered === 'true' && savedEmail) {
-                    setEmail(savedEmail);
-                    setPassword(savedPassword || '');
-                    setRememberMe(true);
-                }
-
-                const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
-                if (isLoggedIn === 'true') {
-                    router.replace('/(tabs)/home');
-                }
-            } catch (e) {
-                console.log("Initialization error:", e.message);
-            } finally {
+            const versionResult = await checkAppVersion();
+            if (!versionResult.allowed) {
+                setVersionBlock({
+                    currentVersion: versionResult.currentVersion,
+                    minVersion: versionResult.minVersion,
+                    storeUrl: versionResult.storeUrl,
+                });
                 setIsCheckingSession(false);
+                return;
             }
+
+            await checkSavedCredentialsAndSession();
         };
 
-        checkVersionEnforcement();
-        checkSavedCredentialsAndSession();
+        initializeApp();
     }, []);
 
     /**
-     * Fetches authenticated user profile.
-     * FIX: No longer blocks the login flow if roles are missing.
-     * Provides a fallback role to prevent Menu/Home crashes.
+     * Verifies if there is an active session or remembered credentials.
+     */
+    const checkSavedCredentialsAndSession = async () => {
+        try {
+            const savedEmail = await AsyncStorage.getItem('rememberedEmail');
+            const savedPassword = await AsyncStorage.getItem('rememberedPassword');
+            const isRemembered = await AsyncStorage.getItem('rememberMe');
+
+            if (isRemembered === 'true' && savedEmail) {
+                setEmail(savedEmail);
+                setPassword(savedPassword || '');
+                setRememberMe(true);
+            }
+
+            const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
+            if (isLoggedIn === 'true') {
+                await registerPushNotifications();
+                await syncPushTokenWithServer();
+                DeviceEventEmitter.emit('user-logged-in');
+                router.replace('/(tabs)/home');
+            }
+        } catch (e) {
+            console.log("Session recovery error:", e.message);
+        } finally {
+            setIsCheckingSession(false);
+        }
+    };
+
+    /**
+     * Fetches authenticated user profile and handles RBAC fallbacks.
      */
     const fetchAndStoreUserData = async (token) => {
         try {
@@ -113,13 +104,9 @@ const LoginScreen = () => {
             
             let userData = response.data;
 
-            // FIX: If the user has no roles, we inject a dummy role so the UI components don't break.
-            // This allows the user to enter the app even if permissions are currently broken.
             if (!userData.roles || userData.roles.length === 0) {
-                console.log("User has no roles - injecting fallback to allow entry.");
                 userData.roles = [{ id: 0, name: 'Invitado' }];
                 
-                // Show toast inside the app once navigation completes
                 setTimeout(() => {
                     Toast.show({
                         type: 'error',
@@ -130,7 +117,6 @@ const LoginScreen = () => {
                 }, 1000);
             }
 
-            // Persistence of user data
             await AsyncStorage.setItem('userData', JSON.stringify(userData));
             
             if (userData.profile_photo_path) {
@@ -139,17 +125,15 @@ const LoginScreen = () => {
                 await AsyncStorage.setItem('userProfilePhoto', photoUrl);
                 DeviceEventEmitter.emit('user-photo-updated', photoUrl);
             }
-            
-            return true; // Always return true to allow routing to Home
-
+            return true;
         } catch (error) {
             console.log("Profile fetch error:", error.message);
-            return true; // Allow entry even on fetch failure so user isn't stuck at Login
+            return true; 
         }
     };
 
     /**
-     * Executes the login process.
+     * Executes the login process with CSRF protection.
      */
     const handleLogin = async () => {
         if (!email || !password) {
@@ -160,8 +144,6 @@ const LoginScreen = () => {
         setLoading(true);
         try {
             const baseUrl = API_BASE.replace('/api', '');
-            
-            // CSRF protection for Sanctum
             await axios.get(`${baseUrl}/sanctum/csrf-cookie`, { withCredentials: true });
             
             const response = await api.post('/login', { email, password });
@@ -170,15 +152,16 @@ const LoginScreen = () => {
                 const token = response.data.token; 
 
                 if (token) {
-                    // Save token first
                     await AsyncStorage.setItem('userToken', token);
                     await AsyncStorage.setItem('userEmail', email); 
                     await AsyncStorage.setItem('isLoggedIn', 'true');
 
-                    // Fetch user data - now non-blocking
                     await fetchAndStoreUserData(token);
 
-                    // Handle credentials persistence
+                    await registerPushNotifications();
+                    await syncPushTokenWithServer();
+                    DeviceEventEmitter.emit('user-logged-in');
+
                     if (rememberMe) {
                         await AsyncStorage.setItem('rememberedEmail', email);
                         await AsyncStorage.setItem('rememberedPassword', password);
@@ -189,13 +172,10 @@ const LoginScreen = () => {
                         await AsyncStorage.setItem('rememberMe', 'false');
                     }
 
-                    // Route to main app
                     router.replace('/(tabs)/home'); 
                 }
             }
         } catch (error) {
-            console.log("Login sequence failed:", error.message);
-
             if (error.response && error.response.status === 401) {
                 Alert.alert('Error de acceso', 'Usuario o contraseña incorrectos.');
             } else {
@@ -209,8 +189,19 @@ const LoginScreen = () => {
     if (isCheckingSession) {
         return (
             <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color="#4CAF50" />
+                <ActivityIndicator size="large" color="#2E7D32" />
+                <Text style={{ marginTop: 10, color: '#2E7D32' }}>Cargando aplicación...</Text>
             </View>
+        );
+    }
+
+    if (versionBlock) {
+        return (
+            <ForceUpdateScreen
+                currentVersion={versionBlock.currentVersion}
+                minVersion={versionBlock.minVersion}
+                storeUrl={versionBlock.storeUrl}
+            />
         );
     }
 
@@ -230,7 +221,7 @@ const LoginScreen = () => {
                         <View style={styles.overlay}>
                             <View style={styles.formContainer}>
                                 <Text style={styles.brandText}>Prados de la Huerta</Text>
-                                <Text style={styles.welcomeText}>Bienvenido...</Text>
+                                <Text style={styles.welcomeText}>Bienvenidox</Text>
                                 
                                 <View style={styles.inputContainer}>
                                     <TextInput 
